@@ -59,3 +59,11 @@ Configuration (`config.go`) is loaded entirely from environment variables at sta
 - This is a lightweight/demo implementation: there's no database, no persistence of transaction state, and the callback handler only logs incoming results rather than reconciling them against an initiated request.
 - OAuth tokens are not cached; each STK push fetches a new token, which is wasteful under load but simpler for a low-volume demo.
 - The bank list in `mpesa.go` (`Banks`) is a hardcoded sample of Kenyan banks' PayBill shortcodes — verify and update these against current Safaricom/bank documentation before using in production.
+
+## Author
+
+**Eslieh Victor**
+
+- GitHub: [@eslieh](https://github.com/eslieh)
+- LinkedIn: [eslieh](https://www.linkedin.com/in/eslieh)
+- X (Twitter): [@_elsieh](https://x.com/_elsieh)
