@@ -83,7 +83,10 @@ export default function ApiKeysPage() {
       </section>
 
       <section className={styles.card}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Quick start</div>
+        <div className={styles.rowBetween} style={{ marginBottom: 8 }}>
+          <div style={{ fontWeight: 700 }}>Quick start</div>
+          <a href="/docs#quickstart" target="_blank" className="btn btn-ghost" style={{ padding: "6px 10px" }}>Full API docs →</a>
+        </div>
         <pre className={styles.codeBox}>{`curl -X POST ${getBaseUrl()}/v1/payments \\
   -H "Authorization: Bearer $PAYTRACK_API_KEY" \\
   -H "Idempotency-Key: order-123" \\

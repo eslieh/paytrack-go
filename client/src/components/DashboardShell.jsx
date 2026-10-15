@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
@@ -36,6 +37,8 @@ export default function DashboardShell({ children }) {
         items={NAV}
         activeHref={active}
         actions={
+          <>
+          <Link href="/docs" className={tabStyles.tab} target="_blank">Docs</Link>
           <button
             className={tabStyles.tab}
             onClick={() => { logout(); router.replace("/auth"); }}
@@ -44,6 +47,7 @@ export default function DashboardShell({ children }) {
           >
             <LogOut size={16} />
           </button>
+          </>
         }
       />
       <main className={styles.main}>{loading || !token ? <div className={styles.skeletonLine} /> : children}</main>

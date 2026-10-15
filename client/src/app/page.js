@@ -23,7 +23,7 @@ export default function Home() {
         <div className={styles.brand}>Paytrack</div>
         <nav className={styles.navlinks}>
           <Link href="#features">Features</Link>
-          <Link href="#pricing">Pricing</Link>
+          <Link href="/docs">Docs</Link>
           <Link href="/auth" className={styles.linkMuted}>
             Sign in
           </Link>
@@ -52,11 +52,11 @@ export default function Home() {
             </Link>
             <Link
               role="menuitem"
-              href="#pricing"
+              href="/docs"
               className={styles.menuItem}
               onClick={() => setMenuOpen(false)}
             >
-              Pricing
+              Docs
             </Link>
             <Link
               role="menuitem"
@@ -92,9 +92,9 @@ export default function Home() {
               Start building
               <ArrowRight size={18} />
             </Link>
-            <a href="#code" className={styles.ctaGhost}>
-              See the code
-            </a>
+            <Link href="/docs" className={styles.ctaGhost}>
+              Read the docs
+            </Link>
           </div>
 
           <ul className={styles.points}>
@@ -188,7 +188,9 @@ export default function Home() {
       </section>
 
       <section id="code" className={styles.codeBlock}>
-        <div className={styles.codeHeader}>Charge with STK Push</div>
+        <div className={styles.codeHeader}>
+          Charge with STK Push · <Link href="/docs#create-payment">full reference →</Link>
+        </div>
         <pre>
           {`curl -X POST ${API}/v1/payments \\
   -H "Authorization: Bearer ptk_***" \\
@@ -217,36 +219,10 @@ PayTrack-Signature: t=1760512345,v1=5f2b…
         </pre>
       </section>
 
-      <section id="pricing" className={styles.pricing}>
-        <div className={styles.priceCard}>
-          <div className={styles.priceHeader}>Simple pricing</div>
-          <div className={styles.priceValue}>1.5%</div>
-          <div className={styles.priceNote}>per successful collection</div>
-          <ul className={styles.priceList}>
-            <li>
-              <CheckCircle2 size={18} /> No monthly fees
-            </li>
-            <li>
-              <CheckCircle2 size={18} /> Free test mode
-            </li>
-            <li>
-              <CheckCircle2 size={18} /> Funds go straight to your bank, PayBill or Till
-            </li>
-            <li>
-              <CheckCircle2 size={18} /> Standard M-Pesa charges apply
-            </li>
-          </ul>
-          <Link href="/auth/register" className={styles.ctaPrimary}>
-            Get started
-            <ArrowRight size={18} />
-          </Link>
-        </div>
-      </section>
-
       <footer className={styles.footer}>
         <span>© {new Date().getFullYear()} Paytrack from Geninworld Limited</span>
         <div className={styles.footerLinks}>
-          <a href="#pricing">Pricing</a>
+          <Link href="/docs">Docs</Link>
           <a href="#features">Features</a>
           <Link href="/auth">Sign in</Link>
         </div>

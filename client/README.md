@@ -24,6 +24,7 @@ The Next.js dashboard and marketing site for PayTrack. It talks to the Go API in
 | Route | What it does | API |
 |---|---|---|
 | `/` | Landing page | none |
+| `/docs` | Public API reference: guides, objects, every endpoint with request samples (cURL, Node.js, Python, PHP) and responses. Content lives in `src/app/docs/content.js`; update it with `server/api/openapi.yaml` | none |
 | `/auth` | Sign in (supports `?next=/path`) | `POST /v1/auth/login` |
 | `/auth/register` | Create a business and its owner user | `POST /v1/auth/register` |
 | `/dashboard` | Overview: business info, summary tiles, setup checklist, recent payments | `GET /v1/me`, `/v1/channels`, `/v1/webhook`, `/v1/api-keys`, `/v1/payments` |
