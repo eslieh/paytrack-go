@@ -6,7 +6,7 @@ name: paytrack
 x-app: &app
   build: .
   image: paytrack:dev
-  env_file: .env
+  env_file: ${ENV_FILE:-.env}
   environment:
     KAFKA_BROKERS: kafka:9092
   restart: unless-stopped
@@ -17,12 +17,12 @@ x-app: &app
 services:
   kafka:
     image: apache/kafka:3.9.0
-    ports: ["29092:29092"]
+    ports: ["127.0.0.1:9719:9719"] # host-local only; never expose Kafka
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9719
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9719
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
@@ -42,17 +42,17 @@ services:
     build: .
     image: paytrack:dev
     command: ["migrate"]
-    env_file: .env
+    env_file: ${ENV_FILE:-.env}
 
   api:
     <<: *app
     command: ["api"]
-    ports: ["8080:8080"]
+    ports: ["${API_HOST_PORT:-9710}:9710"]
 
   callback:
     <<: *app
     command: ["callback"]
-    ports: ["8081:8081"]
+    ports: ["${CALLBACK_HOST_PORT:-9711}:9711"]
 
   worker:
     <<: *app

@@ -67,9 +67,9 @@ type Config struct {
 func Load(role Role) (*Config, error) {
 	c := &Config{
 		DatabaseURL:           normalizeDatabaseURL(os.Getenv("DATABASE_URL")),
-		APIAddr:               env("API_ADDR", ":8080"),
-		CallbackAddr:          env("CALLBACK_ADDR", ":8081"),
-		WorkerAddr:            env("WORKER_ADDR", ":8082"),
+		APIAddr:               env("API_ADDR", ":9710"),
+		CallbackAddr:          env("CALLBACK_ADDR", ":9711"),
+		WorkerAddr:            env("WORKER_ADDR", ":9712"),
 		KafkaBrokers:          list(os.Getenv("KAFKA_BROKERS")),
 		CORSAllowedOrigins:    list(os.Getenv("CORS_ALLOWED_ORIGINS")),
 		PublicCallbackBaseURL: strings.TrimRight(os.Getenv("PUBLIC_CALLBACK_BASE_URL"), "/"),

@@ -40,9 +40,9 @@ One binary, deployed as separate containers per role so each scales and fails in
 
 | Role | Exposes | Depends on | Notes |
 |---|---|---|---|
-| `api` | `:8080` REST (dashboard + tenant backends) | Postgres, Daraja | Doesn't need Kafka, so payments can still be initiated during a Kafka outage |
-| `callback` | `:8081` `POST /callbacks/mpesa/stk/{token}` (public) | Postgres only | Smallest possible dependency set; must always be up |
-| `worker` | `:8082` health | Postgres, Kafka, Daraja, tenant webhooks | Outbox relay, consumers, reconciler, webhook dispatcher |
+| `api` | `:9710` REST (dashboard + tenant backends) | Postgres, Daraja | Doesn't need Kafka, so payments can still be initiated during a Kafka outage |
+| `callback` | `:9711` `POST /callbacks/mpesa/stk/{token}` (public) | Postgres only | Smallest possible dependency set; must always be up |
+| `worker` | `:9712` health | Postgres, Kafka, Daraja, tenant webhooks | Outbox relay, consumers, reconciler, webhook dispatcher |
 | `migrate` | none | Postgres | Runs once per deploy (advisory-locked) |
 
 ## Payment flow
@@ -152,7 +152,7 @@ Target layout, with every role running as a container on at least two instances 
 
 - **Stateless processes.** Any replica can die. Background work is claimed with `SKIP LOCKED` plus leases, so there's no leader election and an expired lease just gets picked up by another replica.
 - **Graceful shutdown.** SIGTERM drains HTTP (25s) and stops consumers before committing in-flight work. Uncommitted messages are redelivered.
-- **Health checks.** `/healthz` (liveness) and `/readyz` (DB ping) on every role; the worker's are on `:8082`.
+- **Health checks.** `/healthz` (liveness) and `/readyz` (DB ping) on every role; the worker's are on `:9712`.
 - **Failure isolation.**
   - Kafka down: the API and callbacks still work, and the outbox buffers events.
   - Workers down: callbacks are still stored and get processed on recovery.

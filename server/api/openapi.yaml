@@ -22,7 +22,7 @@ info:
     Verify the signature, reject timestamps older than 5 minutes, dedupe on event id,
     and respond 2xx within 10s. Non-2xx responses are retried for ~16h.
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:9710
 security:
   - bearer: []
 

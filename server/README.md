@@ -12,7 +12,7 @@ A multi-tenant M-Pesa STK push router. Tenants register payment destinations (a 
    - `DATABASE_URL`: any Postgres 15 or later. SQLAlchemy-style `postgresql+asyncpg://` URLs are accepted.
    - `ENCRYPTION_KEY`: generate with `openssl rand -base64 32`.
    - `JWT_SECRET`: generate with `openssl rand -base64 48`.
-   - `PUBLIC_CALLBACK_BASE_URL`: a public HTTPS URL that forwards to the callback role (`:8081`), for example `ngrok http 8081`. Daraja won't call `localhost`.
+   - `PUBLIC_CALLBACK_BASE_URL`: a public HTTPS URL that forwards to the callback role (`:9711`), for example `ngrok http 9711`. Daraja won't call `localhost`.
    - `MPESA_*`: the platform Daraja app (consumer key and secret, shortcode, passkey). It is used for every tenant's pushes.
 2. Start everything:
    ```sh
@@ -27,15 +27,15 @@ A multi-tenant M-Pesa STK push router. Tenants register payment destinations (a 
 3. Use the API:
    ```sh
    # dashboard sign-up → JWT
-   curl -XPOST localhost:8080/v1/auth/register -d '{"business_name":"Shop","email":"me@shop.co.ke","password":"a-long-password"}'
+   curl -XPOST localhost:9710/v1/auth/register -d '{"business_name":"Shop","email":"me@shop.co.ke","password":"a-long-password"}'
    # with the JWT: create an API key for the tenant backend, set the webhook URL
-   curl -XPOST localhost:8080/v1/api-keys -H "Authorization: Bearer $JWT" -d '{"name":"backend"}'
-   curl -XPUT  localhost:8080/v1/webhook  -H "Authorization: Bearer $JWT" -d '{"url":"https://shop.co.ke/hooks/paytrack"}'
+   curl -XPOST localhost:9710/v1/api-keys -H "Authorization: Bearer $JWT" -d '{"name":"backend"}'
+   curl -XPUT  localhost:9710/v1/webhook  -H "Authorization: Bearer $JWT" -d '{"url":"https://shop.co.ke/hooks/paytrack"}'
    # with the API key: register a destination and charge a customer
-   curl localhost:8080/v1/banks
-   curl -XPOST localhost:8080/v1/channels -H "Authorization: Bearer $KEY" -d '{"name":"Savings","type":"bank","bank_code":"247247","account_number":"0123456789"}'
-   curl -XPOST localhost:8080/v1/channels -H "Authorization: Bearer $KEY" -d '{"name":"Shop","type":"till","business_number":"123456"}'
-   curl -XPOST localhost:8080/v1/payments -H "Authorization: Bearer $KEY" -H "Idempotency-Key: order-123" \
+   curl localhost:9710/v1/banks
+   curl -XPOST localhost:9710/v1/channels -H "Authorization: Bearer $KEY" -d '{"name":"Savings","type":"bank","bank_code":"247247","account_number":"0123456789"}'
+   curl -XPOST localhost:9710/v1/channels -H "Authorization: Bearer $KEY" -d '{"name":"Shop","type":"till","business_number":"123456"}'
+   curl -XPOST localhost:9710/v1/payments -H "Authorization: Bearer $KEY" -H "Idempotency-Key: order-123" \
         -d '{"channel_id":"chn_…","amount":10,"phone":"0712345678"}'
    ```
 
@@ -45,9 +45,9 @@ A multi-tenant M-Pesa STK push router. Tenants register payment destinations (a 
 
 | Role | Port | Health |
 |---|---|---|
-| api | `API_ADDR` (8080) | `/healthz`, `/readyz` |
-| callback | `CALLBACK_ADDR` (8081) | `/healthz`, `/readyz` |
-| worker | `WORKER_ADDR` (8082) | `/healthz`, `/readyz` |
+| api | `API_ADDR` (9710) | `/healthz`, `/readyz` |
+| callback | `CALLBACK_ADDR` (9711) | `/healthz`, `/readyz` |
+| worker | `WORKER_ADDR` (9712) | `/healthz`, `/readyz` |
 
 ## Verifying webhooks (tenant side)
 
