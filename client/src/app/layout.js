@@ -14,17 +14,17 @@ export const metadata = {
     default: "Paytrack — M‑Pesa integration for developers",
     template: "%s — Paytrack",
   },
-  description: "M‑Pesa STK Push on your own PayBill or Till, with signed webhooks, idempotent payments and a dashboard to track them.",
+  description: "M‑Pesa STK Push into your bank account, PayBill or Till, with signed webhooks, idempotent payments and a dashboard to track them.",
   openGraph: {
     title: "Paytrack — M‑Pesa integration for developers",
-    description: "M‑Pesa STK Push on your own PayBill or Till, with signed webhooks, idempotent payments and a dashboard to track them.",
+    description: "M‑Pesa STK Push into your bank account, PayBill or Till, with signed webhooks, idempotent payments and a dashboard to track them.",
     siteName: "Paytrack",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Paytrack — M‑Pesa integration for developers",
-    description: "M‑Pesa STK Push on your own PayBill or Till, with signed webhooks, idempotent payments and a dashboard to track them.",
+    description: "M‑Pesa STK Push into your bank account, PayBill or Till, with signed webhooks, idempotent payments and a dashboard to track them.",
   },
 };
 

@@ -27,13 +27,13 @@ The Next.js dashboard and marketing site for PayTrack. It talks to the Go API in
 | `/auth` | Sign in (supports `?next=/path`) | `POST /v1/auth/login` |
 | `/auth/register` | Create a business and its owner user | `POST /v1/auth/register` |
 | `/dashboard` | Overview: business info, summary tiles, setup checklist, recent payments | `GET /v1/me`, `/v1/channels`, `/v1/webhook`, `/v1/api-keys`, `/v1/payments` |
-| `/dashboard/payments` | Filterable payment list, payment detail (`?id=pay_…`) with its webhook deliveries, and a form to send a test STK push | `GET/POST /v1/payments`, `GET /v1/payments/{id}`, `GET /v1/webhook/deliveries?payment_id=` |
-| `/dashboard/channels` | Register and deactivate Daraja PayBill/Till channels | `GET/POST /v1/channels`, `DELETE /v1/channels/{id}` |
+| `/dashboard/payments` | Filterable payment list, payment detail (`?id=pay_…`) with its webhook deliveries, and a form to send a test STK push. The account reference field follows the channel type (see below) | `GET/POST /v1/payments`, `GET /v1/payments/{id}`, `GET /v1/webhook/deliveries?payment_id=` |
+| `/dashboard/channels` | Add and deactivate payment destinations: a bank account (bank picked from `/v1/banks`), a PayBill (with an optional default account) or a Till | `GET /v1/banks`, `GET/POST /v1/channels`, `DELETE /v1/channels/{id}` |
 | `/dashboard/webhooks` | Webhook URL, signing secret (reveal, copy, rotate), delivery log with redelivery | `GET/PUT /v1/webhook`, `POST /v1/webhook/rotate-secret`, `GET /v1/webhook/deliveries`, `POST /v1/webhook/deliveries/{id}/redeliver` |
 | `/dashboard/api-keys` | Create named API keys (the full key is shown once) and revoke them | `GET/POST /v1/api-keys`, `DELETE /v1/api-keys/{id}` |
-| `/receipt?id=pay_…` | Printable receipt for a succeeded payment | `GET /v1/payments/{id}`, `GET /v1/channels/{id}` |
+| `/receipt?id=pay_…` | Printable receipt for a succeeded payment | `GET /v1/payments/{id}` |
 
-`/dashboard/wallet` redirects to `/dashboard/payments`. The Go backend has no wallet, because payments settle straight to the tenant's own PayBill or Till.
+`/dashboard/wallet` redirects to `/dashboard/payments`. The Go backend has no wallet, because payments settle straight to the tenant's bank account, PayBill or Till.
 
 ## Code layout
 
@@ -59,7 +59,7 @@ const { data, has_more, next_cursor } = await api.payments.list({ status: "succe
 const more = await api.payments.list({ status: "succeeded", cursor: next_cursor });
 
 try {
-  await api.payments.create({ channel_id, amount: 10, phone: "0712345678", account_reference: "ORDER1" }, idempotencyKey);
+  await api.payments.create({ channel_id, amount: 10, phone: "0712345678" }, idempotencyKey);
 } catch (e) {
   if (e instanceof ApiError) console.log(e.status, e.code, e.message, e.requestId);
 }
@@ -69,6 +69,10 @@ try {
 - **Errors.** The server returns `{"error": {"code", "message", "request_id"}}`. These are surfaced as `ApiError`, and `ErrorText` shows the request ID for support.
 - **Pagination.** List endpoints return `{data, has_more, next_cursor}`, newest first. Pass `cursor` to load older pages.
 - **Idempotency.** `POST /v1/payments` needs an `Idempotency-Key`. The STK push form generates one per form, so resubmitting after a network error replays the original payment instead of charging twice.
+- **Channels and `account_reference`.** STK pushes always go through the platform's Daraja app, and a channel only says where the money is routed. The rules for `account_reference` depend on the channel type:
+  - **bank:** omit it. The channel's `account_number` is always used, and the form shows it read-only.
+  - **paybill:** optional if the channel has a default `account_number`, which it overrides. Required otherwise.
+  - **till:** optional.
 - **User-session-only endpoints.** API keys and secret rotation reject API-key auth with 403. The dashboard always uses a user session, so this only matters for tenant backends.
 
 ## Build

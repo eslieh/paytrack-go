@@ -5,7 +5,7 @@ export const metadata = {
     default: "Dashboard",
     template: "%s — Paytrack",
   },
-  description: "Manage your Daraja channels, STK payments, webhooks and API keys.",
+  description: "Manage your payment channels, STK payments, webhooks and API keys.",
   robots: { index: false, follow: false },
 };
 

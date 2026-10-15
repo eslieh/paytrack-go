@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Plus, RefreshCw } from "lucide-react";
 import styles from "../styles.module.css";
 import { api } from "@/lib/api";
-import { fmtDate, fmtKES, maskPhone, newIdempotencyKey } from "@/lib/format";
+import { destinationLabel, fmtDate, fmtKES, maskPhone, newIdempotencyKey } from "@/lib/format";
 import { ErrorText, Field, KV, Modal, StatusBadge } from "@/components/ui.jsx";
 
 const STATUSES = ["created", "pending", "succeeded", "failed", "cancelled", "expired"];
@@ -125,7 +125,10 @@ function Payments() {
                 </div>
                 <div style={{ fontWeight: 600 }}>{fmtKES(p.amount)}</div>
                 <div><StatusBadge status={p.status} /></div>
-                <div className={styles.cellSub}>{channelName(p.channel_id)}</div>
+                <div>
+                  <div className={styles.cellSub} style={{ color: "#0f1222" }}>{channelName(p.channel_id)}</div>
+                  <div className={styles.cellSub}>{destinationLabel(p)}</div>
+                </div>
                 <div className={styles.cellSub}>{fmtDate(p.created_at)}</div>
               </div>
             ))}
@@ -225,6 +228,8 @@ function PaymentDetail({ id, channelName, onClose, onUpdate }) {
           <KV label="Phone">{p.phone}</KV>
           <KV label="Description">{p.description}</KV>
           <KV label="Channel">{channelName(p.channel_id)}</KV>
+          <KV label="Paid to">{destinationLabel(p)}</KV>
+          {p.destination_type !== "bank" && <KV label="Account reference">{p.account_reference}</KV>}
           {p.mpesa_receipt_number && <KV label="M-Pesa receipt"><strong>{p.mpesa_receipt_number}</strong></KV>}
           {p.result_desc && <KV label="Result">{p.result_code != null ? `${p.result_code} · ` : ""}{p.result_desc}</KV>}
           {p.failure_reason && <KV label="Failure reason">{p.failure_reason}</KV>}
@@ -276,17 +281,21 @@ function NewPaymentModal({ channels, onClose, onCreated }) {
   const [error, setError] = useState(null);
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const channel = channels.find((c) => c.id === form.channel_id);
+  // bank: always the channel's account (must be omitted); paybill: overrides the channel default; till: optional.
+  const refMode = channel?.type === "bank" ? "fixed" : channel?.type === "paybill" && !channel.account_number ? "required" : "optional";
 
   async function submit(e) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
+      const ref = form.account_reference.trim();
       const body = {
         channel_id: form.channel_id,
         amount: Number(form.amount),
         phone: form.phone.trim(),
-        account_reference: form.account_reference.trim(),
+        ...(refMode !== "fixed" && ref ? { account_reference: ref } : {}),
         ...(form.description.trim() ? { description: form.description.trim() } : {}),
       };
       onCreated(await api.payments.create(body, idemKey));
@@ -299,7 +308,7 @@ function NewPaymentModal({ channels, onClose, onCreated }) {
   if (channels.length === 0) {
     return (
       <Modal title="New STK push" onClose={onClose} footer={<Link className="btn btn-primary" href="/dashboard/channels">Add a channel</Link>}>
-        <div className={styles.muted}>You need an active Daraja channel before you can charge customers.</div>
+        <div className={styles.muted}>You need an active channel (bank account, PayBill or Till) before you can charge customers.</div>
       </Modal>
     );
   }
@@ -313,7 +322,7 @@ function NewPaymentModal({ channels, onClose, onCreated }) {
         <div className={styles.formGrid}>
           <Field label="Channel">
             <select className={styles.select} value={form.channel_id} onChange={set("channel_id")} required>
-              {channels.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.environment})</option>)}
+              {channels.map((c) => <option key={c.id} value={c.id}>{c.name} · {destinationLabel(c)}</option>)}
             </select>
           </Field>
           <Field label="Amount (KES)" hint="Whole shillings, 1 – 250,000">
@@ -322,9 +331,29 @@ function NewPaymentModal({ channels, onClose, onCreated }) {
           <Field label="Phone" hint="07…, 01… or 254…">
             <input className="input" inputMode="tel" placeholder="0712345678" value={form.phone} onChange={set("phone")} required />
           </Field>
-          <Field label="Account reference" hint="Up to 12 characters">
-            <input className="input" maxLength={12} placeholder="ORDER123" value={form.account_reference} onChange={set("account_reference")} required />
-          </Field>
+          {refMode === "fixed" ? (
+            <Field label="Account reference" hint="Bank channels always credit the channel's account">
+              <input className="input" value={channel.account_number || ""} disabled />
+            </Field>
+          ) : (
+            <Field
+              label="Account reference"
+              hint={
+                refMode === "required" ? "Required: this PayBill has no default account. Up to 12 characters"
+                : channel?.type === "paybill" ? `Optional, defaults to ${channel.account_number}`
+                : "Optional, up to 12 characters"
+              }
+            >
+              <input
+                className="input"
+                maxLength={12}
+                placeholder={channel?.type === "paybill" && channel.account_number ? channel.account_number : "ORDER123"}
+                value={form.account_reference}
+                onChange={set("account_reference")}
+                required={refMode === "required"}
+              />
+            </Field>
+          )}
           <Field label="Description" hint="Optional, up to 13 characters">
             <input className="input" maxLength={13} placeholder="Payment" value={form.description} onChange={set("description")} />
           </Field>

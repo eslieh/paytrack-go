@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Circle } from "lucide-react";
 import styles from "./styles.module.css";
 import { api } from "@/lib/api";
-import { fmtDate, fmtKES, maskPhone } from "@/lib/format";
+import { destinationLabel, fmtDate, fmtKES, maskPhone } from "@/lib/format";
 import { ErrorText, StatusBadge } from "@/components/ui.jsx";
 
 const SAMPLE = 100; // payments used for the summary tiles
@@ -35,7 +35,7 @@ export default function OverviewPage() {
   const successRate = settledCount ? Math.round((succeeded.length / settledCount) * 100) : null;
 
   const steps = [
-    { done: channels?.some((c) => c.active), label: "Register a Daraja channel", href: "/dashboard/channels" },
+    { done: channels?.some((c) => c.active), label: "Add a channel (bank account, PayBill or Till)", href: "/dashboard/channels" },
     { done: Boolean(webhook?.url), label: "Set your webhook URL", href: "/dashboard/webhooks" },
     { done: keys?.some((k) => !k.revoked_at), label: "Create an API key for your backend", href: "/dashboard/api-keys" },
     { done: payments?.length > 0, label: "Send your first STK push", href: "/dashboard/payments" },
@@ -118,8 +118,8 @@ export default function OverviewPage() {
           </div>
           {channels.map((c) => (
             <div key={c.id} className={styles.kv}>
-              <span>{c.name} <span className={styles.cellSub}>· {c.type} {c.type === "till" ? c.till_number : c.short_code}</span></span>
-              <span><StatusBadge status={c.active ? c.environment : "inactive"} tone={c.active ? (c.environment === "production" ? "success" : "warning") : "neutral"} /></span>
+              <span>{c.name} <span className={styles.cellSub}>· {destinationLabel(c)}</span></span>
+              <span><StatusBadge status={c.active ? "active" : "inactive"} tone={c.active ? "success" : "neutral"} /></span>
             </div>
           ))}
         </section>

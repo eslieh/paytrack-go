@@ -5,7 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle2, Download } from "lucide-react";
 import { api } from "@/lib/api";
-import { fmtDate, fmtKES } from "@/lib/format";
+import { destinationLabel, fmtDate, fmtKES } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext.jsx";
 
 const box = { border: "1px solid #e9ebf4", borderRadius: 12, padding: 12 };
@@ -23,16 +23,12 @@ function Receipt() {
   const id = useSearchParams().get("id");
   const { token, tenant, loading } = useAuth();
   const [payment, setPayment] = useState(null);
-  const [channel, setChannel] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (loading || !token || !id) return;
     api.payments.get(id)
-      .then((p) => {
-        setPayment(p);
-        return api.channels.get(p.channel_id).then(setChannel).catch(() => {});
-      })
+      .then(setPayment)
       .catch((e) => setError(e.message));
   }, [id, token, loading]);
 
@@ -53,8 +49,6 @@ function Receipt() {
     );
   }
 
-  const number = channel ? (channel.type === "till" ? `Till ${channel.till_number}` : `PayBill ${channel.short_code}`) : null;
-
   return (
     <div style={{ minHeight: "100svh", display: "grid", placeItems: "center", padding: 24 }}>
       <div style={{ width: "100%", maxWidth: 720, background: "#fff", color: "#0f1222", border: "1px solid #e9ebf4", borderRadius: 16, boxShadow: "0 12px 30px rgba(12,18,37,0.06)" }}>
@@ -74,7 +68,7 @@ function Receipt() {
             <div style={box}>
               <div style={{ ...muted, fontSize: 12 }}>Received by</div>
               <div style={{ fontWeight: 700 }}>{tenant?.name || "—"}</div>
-              {number && <div style={muted}>{number}</div>}
+              <div style={muted}>{destinationLabel(payment)}</div>
             </div>
             <div style={box}>
               <div style={{ ...muted, fontSize: 12 }}>M-Pesa receipt</div>
@@ -90,7 +84,7 @@ function Receipt() {
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", padding: 12, borderTop: "1px solid #eef1f7" }}>
               <div>
                 {payment.description}
-                <div style={{ ...muted, fontSize: 12 }}>Account {payment.account_reference}</div>
+                {payment.destination_type !== "till" && <div style={{ ...muted, fontSize: 12 }}>Account {payment.account_reference}</div>}
               </div>
               <div style={{ textAlign: "right" }}>{fmtKES(payment.amount)}</div>
             </div>

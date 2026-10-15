@@ -88,7 +88,7 @@ export default function ApiKeysPage() {
   -H "Authorization: Bearer $PAYTRACK_API_KEY" \\
   -H "Idempotency-Key: order-123" \\
   -H "Content-Type: application/json" \\
-  -d '{"channel_id":"chn_…","amount":10,"phone":"0712345678","account_reference":"ORDER123"}'`}</pre>
+  -d '{"channel_id":"chn_…","amount":10,"phone":"0712345678"}'`}</pre>
       </section>
 
       {creating && (

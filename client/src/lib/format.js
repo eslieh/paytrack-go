@@ -16,6 +16,18 @@ export function maskSecret(s, visible = 6) {
   return `${s.slice(0, visible)}${"•".repeat(Math.min(24, s.length - visible - 4))}${s.slice(-4)}`;
 }
 
+export const CHANNEL_TYPE_LABEL = { bank: "Bank account", paybill: "PayBill", till: "Till (Buy Goods)" };
+
+// Where a channel or payment routes money, e.g. "Equity Bank · 0123456789", "PayBill 400200 · ACC1", "Till 123456".
+export function destinationLabel({ type, destination_type, business_number, bank_name, account_number, account_reference }) {
+  const t = type || destination_type;
+  const acc = account_number || (t !== "till" ? account_reference : "");
+  if (t === "bank") return [bank_name || `Bank ${business_number}`, acc].filter(Boolean).join(" · ");
+  if (t === "paybill") return [`PayBill ${business_number}`, acc].filter(Boolean).join(" · ");
+  if (t === "till") return `Till ${business_number}`;
+  return business_number || "—";
+}
+
 // Badge tone for payment and delivery statuses.
 export function statusTone(status) {
   switch (status) {

@@ -4,19 +4,8 @@ import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import styles from "../styles.module.css";
 import { api } from "@/lib/api";
-import { fmtDate } from "@/lib/format";
+import { CHANNEL_TYPE_LABEL, destinationLabel, fmtDate } from "@/lib/format";
 import { ErrorText, Field, Modal, StatusBadge } from "@/components/ui.jsx";
-
-const EMPTY = {
-  name: "",
-  type: "paybill",
-  environment: "sandbox",
-  short_code: "",
-  till_number: "",
-  consumer_key: "",
-  consumer_secret: "",
-  passkey: "",
-};
 
 export default function ChannelsPage() {
   const [channels, setChannels] = useState(null);
@@ -39,9 +28,9 @@ export default function ChannelsPage() {
     try {
       await api.channels.deactivate(c.id);
       setChannels((prev) => prev.map((x) => (x.id === c.id ? { ...x, active: false } : x)));
-      setDeactivating(null);
     } catch (e) {
       setError(e);
+    } finally {
       setDeactivating(null);
     }
   }
@@ -52,33 +41,30 @@ export default function ChannelsPage() {
         <div className={styles.rowBetween}>
           <div>
             <div className={styles.h2}>Channels</div>
-            <div className={styles.muted} style={{ fontSize: 13 }}>Your Daraja PayBill and Till credentials. Payments are sent through a channel.</div>
+            <div className={styles.muted} style={{ fontSize: 13 }}>
+              Where your money goes: a bank account, a PayBill or a Till. Every payment is sent to a channel.
+            </div>
           </div>
           <button className="btn btn-primary" onClick={() => setCreating(true)}><Plus size={16} /> Add channel</button>
         </div>
 
-        <div className={styles.table} style={{ "--cols": "1.6fr 1fr 1fr 1fr 1.2fr 0.8fr" }}>
+        <div className={styles.table} style={{ "--cols": "1.5fr 1fr 1.8fr 0.9fr 1.2fr 0.8fr" }}>
           <div className={styles.thead}>
-            <div>Name</div><div>Type</div><div>Number</div><div>Status</div><div>Created</div><div />
+            <div>Name</div><div>Type</div><div>Destination</div><div>Status</div><div>Created</div><div />
           </div>
           <div className={styles.tbody}>
             {!channels && !error && <div className={styles.empty}>Loading...</div>}
-            {channels?.length === 0 && <div className={styles.empty}>No channels yet. Add your Daraja credentials to start charging.</div>}
+            {channels?.length === 0 && <div className={styles.empty}>No channels yet. Add a bank account, PayBill or Till to start collecting.</div>}
             {channels?.map((c) => (
               <div key={c.id} className={styles.trow}>
                 <div>
                   <div className={styles.cellTitle}>{c.name}</div>
                   <div className={styles.cellSub}>{c.id}</div>
                 </div>
-                <div style={{ textTransform: "capitalize" }}>{c.type}</div>
+                <div>{CHANNEL_TYPE_LABEL[c.type] || c.type}</div>
+                <div className={styles.cellTitle} style={{ fontWeight: 400 }} title={destinationLabel(c)}>{destinationLabel(c)}</div>
                 <div>
-                  {c.type === "till" ? c.till_number : c.short_code}
-                  {c.type === "till" && <div className={styles.cellSub}>Store {c.short_code}</div>}
-                </div>
-                <div>
-                  {c.active
-                    ? <StatusBadge status={c.environment} tone={c.environment === "production" ? "success" : "warning"} />
-                    : <StatusBadge status="inactive" tone="neutral" />}
+                  {c.active ? <StatusBadge status="active" tone="success" /> : <StatusBadge status="inactive" tone="neutral" />}
                 </div>
                 <div className={styles.cellSub}>{fmtDate(c.created_at)}</div>
                 <div style={{ textAlign: "right" }}>
@@ -113,7 +99,7 @@ export default function ChannelsPage() {
             </>
           }
         >
-          <div className={styles.muted}>New payments on this channel will be rejected. Payments already in progress still complete. This can't be undone; add the channel again to reuse it.</div>
+          <div className={styles.muted}>New payments on this channel will be rejected. Payments already in progress still complete. This can&apos;t be undone; add the channel again to reuse it.</div>
         </Modal>
       )}
     </>
@@ -121,20 +107,29 @@ export default function ChannelsPage() {
 }
 
 function NewChannelModal({ onClose, onCreated }) {
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState({ name: "", type: "bank", bank_code: "", business_number: "", account_number: "" });
+  const [banks, setBanks] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const isTill = form.type === "till";
+
+  useEffect(() => {
+    api.banks.list().then((r) => setBanks(r.data)).catch((e) => { setBanks([]); setError(e); });
+  }, []);
 
   async function submit(e) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+    const body = { name: form.name.trim(), type: form.type };
+    if (form.type === "bank") {
+      body.bank_code = form.bank_code;
+      body.account_number = form.account_number.trim();
+    } else {
+      body.business_number = form.business_number.trim();
+      if (form.type === "paybill" && form.account_number.trim()) body.account_number = form.account_number.trim();
+    }
     try {
-      const body = { ...form };
-      if (!isTill) delete body.till_number;
-      for (const k of Object.keys(body)) body[k] = body[k].trim();
       onCreated(await api.channels.create(body));
     } catch (err) {
       setError(err);
@@ -143,44 +138,46 @@ function NewChannelModal({ onClose, onCreated }) {
   }
 
   return (
-    <Modal title="Add Daraja channel" onClose={onClose}>
+    <Modal title="Add channel" onClose={onClose}>
       <form onSubmit={submit}>
         <div className={styles.notice}>
-          Credentials are encrypted at rest and never shown again. Get them from your app on the Safaricom Daraja portal.
+          PayTrack sends the M-Pesa prompt and routes the money straight to this destination. You don&apos;t need your own Daraja app.
         </div>
         <div className={styles.formGrid}>
           <Field label="Name">
-            <input className="input" placeholder="Main shop" value={form.name} onChange={set("name")} required />
-          </Field>
-          <Field label="Environment">
-            <select className={styles.select} value={form.environment} onChange={set("environment")}>
-              <option value="sandbox">Sandbox</option>
-              <option value="production">Production</option>
-            </select>
+            <input className="input" placeholder="Main account" value={form.name} onChange={set("name")} required />
           </Field>
           <Field label="Type">
             <select className={styles.select} value={form.type} onChange={set("type")}>
-              <option value="paybill">PayBill</option>
-              <option value="till">Till (Buy Goods)</option>
+              {Object.entries(CHANNEL_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </Field>
-          <Field label={isTill ? "Store number" : "PayBill number"} hint="5–7 digits">
-            <input className="input" inputMode="numeric" pattern="\d{5,7}" placeholder={isTill ? "Head office / store no." : "174379"} value={form.short_code} onChange={set("short_code")} required />
-          </Field>
-          {isTill && (
-            <Field label="Till number" hint="5–7 digits">
-              <input className="input" inputMode="numeric" pattern="\d{5,7}" value={form.till_number} onChange={set("till_number")} required />
+
+          {form.type === "bank" && (
+            <>
+              <Field label="Bank">
+                <select className={styles.select} value={form.bank_code} onChange={set("bank_code")} required disabled={!banks}>
+                  <option value="" disabled>{banks ? "Choose a bank" : "Loading banks..."}</option>
+                  {banks?.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Account number" hint="The bank account credited, up to 12 characters">
+                <input className="input" maxLength={12} value={form.account_number} onChange={set("account_number")} required />
+              </Field>
+            </>
+          )}
+
+          {form.type !== "bank" && (
+            <Field label={form.type === "till" ? "Till number" : "PayBill number"} hint="5–7 digits">
+              <input className="input" inputMode="numeric" pattern="\d{5,7}" value={form.business_number} onChange={set("business_number")} required />
             </Field>
           )}
-          <Field label="Consumer key">
-            <input className="input" autoComplete="off" value={form.consumer_key} onChange={set("consumer_key")} required />
-          </Field>
-          <Field label="Consumer secret">
-            <input className="input" type="password" autoComplete="new-password" value={form.consumer_secret} onChange={set("consumer_secret")} required />
-          </Field>
-          <Field label="Passkey">
-            <input className="input" type="password" autoComplete="new-password" value={form.passkey} onChange={set("passkey")} required />
-          </Field>
+
+          {form.type === "paybill" && (
+            <Field label="Default account number" hint="Optional. Used when a payment doesn't set its own account reference.">
+              <input className="input" maxLength={12} value={form.account_number} onChange={set("account_number")} />
+            </Field>
+          )}
         </div>
         <ErrorText error={error} />
         <div className={styles.modalFooter}>

@@ -77,6 +77,10 @@ export const api = {
     revoke: (id) => apiFetch(`/v1/api-keys/${enc(id)}`, { method: "DELETE" }),
   },
 
+  banks: {
+    list: () => apiFetch("/v1/banks", { auth: false }),
+  },
+
   channels: {
     list: () => apiFetch("/v1/channels"),
     get: (id) => apiFetch(`/v1/channels/${enc(id)}`),

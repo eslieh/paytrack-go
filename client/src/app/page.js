@@ -82,8 +82,9 @@ export default function Home() {
         <div className={styles.heroCopy}>
           <h1>M‑Pesa integration, made effortless for developers</h1>
           <p>
-            Plug in your own PayBill or Till, send STK pushes with one API call
-            and get signed webhooks when customers pay. Track every payment and
+            Collect straight into your bank account, PayBill or Till. No Daraja
+            app needed: send an STK push with one API call and get signed
+            webhooks when customers pay. Track every payment and
             delivery from a single dashboard.
           </p>
           <div className={styles.ctaRow}>
@@ -98,7 +99,7 @@ export default function Home() {
 
           <ul className={styles.points}>
             <li>
-              <CheckCircle2 size={18} /> STK Push on your own PayBill or Till
+              <CheckCircle2 size={18} /> STK Push into your bank account, PayBill or Till
             </li>
             <li>
               <CheckCircle2 size={18} /> Signed webhooks with automatic retries
@@ -156,7 +157,7 @@ export default function Home() {
               </div>
               <div className={styles.itemRow}>
                 <span>Channel</span>
-                <strong>PayBill 174379 · sandbox</strong>
+                <strong>Equity Bank · 0123456789</strong>
               </div>
             </div>
           </div>
@@ -177,7 +178,7 @@ export default function Home() {
         <div className={styles.feature}>
           <Shield />
           <h3>Secure</h3>
-          <p>Daraja credentials encrypted at rest; revocable API keys.</p>
+          <p>No Daraja credentials to manage; revocable API keys.</p>
         </div>
         <div className={styles.feature}>
           <Code2 />
@@ -196,8 +197,7 @@ export default function Home() {
   -d '{
     "channel_id": "chn_***",
     "amount": 250,
-    "phone": "0712345678",
-    "account_reference": "ORDER123"
+    "phone": "0712345678"
   }'`}
         </pre>
         <div className={styles.codeHeader}>Check payment status</div>
@@ -230,7 +230,7 @@ PayTrack-Signature: t=1760512345,v1=5f2b…
               <CheckCircle2 size={18} /> Free test mode
             </li>
             <li>
-              <CheckCircle2 size={18} /> Funds settle straight to your PayBill or Till
+              <CheckCircle2 size={18} /> Funds go straight to your bank, PayBill or Till
             </li>
             <li>
               <CheckCircle2 size={18} /> Standard M-Pesa charges apply
