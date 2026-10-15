@@ -107,26 +107,20 @@ const err = (code, message) => ({ error: { code, message, request_id: "req_01k7x
 
 export const ERROR_STATUSES = [
   ["200 / 201 / 202 / 204", "Success."],
-  ["401 Unauthorized", "No token, or the API key / session is invalid, revoked or expired."],
-  ["403 Forbidden", "An API key was used on an endpoint that needs a dashboard session."],
+  ["401 Unauthorized", "No API key, or the key is invalid or revoked."],
   ["404 Not Found", "The object doesn't exist or belongs to another account."],
-  ["409 Conflict", "The request conflicts with current state (email taken, Idempotency-Key reused, delivery in flight)."],
+  ["409 Conflict", "The request conflicts with current state (Idempotency-Key reused, delivery in flight)."],
   ["422 Unprocessable Entity", "The request was understood but a field is invalid. `error.code` says which rule failed."],
   ["500 Internal Server Error", "Something went wrong on our side. Safe to retry with the same Idempotency-Key."],
 ];
 
 export const ERROR_CODES = [
-  ["missing_token", 401, "No `Authorization: Bearer …` header."],
+  ["missing_token", 401, "No `Authorization: Bearer ptk_…` header."],
   ["invalid_api_key", 401, "API key is unknown or revoked."],
-  ["invalid_token", 401, "Dashboard session token is invalid or expired."],
-  ["invalid_credentials", 401, "Email or password is incorrect."],
-  ["user_session_required", 403, "Endpoint requires a dashboard session; API keys aren't accepted."],
-  ["email_taken", 409, "An account with this email already exists."],
   ["idempotency_key_reused", 409, "The Idempotency-Key was already used with a different request body."],
   ["delivery_in_progress", 409, "The webhook delivery is being attempted right now; try again shortly."],
   ["payment_not_found", 404, "No payment with that ID on your account."],
   ["channel_not_found", "404 / 422", "No channel with that ID on your account (422 when referenced from a payment)."],
-  ["api_key_not_found", 404, "No API key with that ID on your account."],
   ["delivery_not_found", 404, "No webhook delivery with that ID on your account."],
   ["invalid_json", 422, "Body isn't valid JSON or contains unknown fields."],
   ["idempotency_key_required", 422, "`Idempotency-Key` header missing or longer than 255 characters."],
@@ -144,9 +138,6 @@ export const ERROR_CODES = [
   ["invalid_account_number", 422, "1–12 characters: letters, digits, space and `-_/.`"],
   ["invalid_business_number", 422, "PayBill / Till number must be 5–7 digits."],
   ["invalid_status", 422, "Unknown `status` filter value."],
-  ["invalid_email", 422, "Email address is invalid."],
-  ["weak_password", 422, "Password must be 10–72 characters."],
-  ["invalid_business_name", 422, "Business name must be 1–100 characters."],
   ["invalid_name", 422, "Name must be 1–100 characters."],
   ["invalid_webhook_url", 422, "Webhook URL must be an absolute http(s) URL without credentials."],
   ["internal_error", 500, "Unexpected server error. Quote the `request_id` when contacting support."],
@@ -233,27 +224,12 @@ export const OBJECTS = [
     ],
     example: EX.delivery,
   },
-  {
-    id: "object-api-key",
-    name: "The API Key object",
-    intro: "API keys authenticate your backend. The secret is returned exactly once, in the create response.",
-    fields: [
-      ["id", "string", "Unique identifier, prefixed `key_`."],
-      ["name", "string", "Your label."],
-      ["prefix", "string", "First characters of the key, e.g. `ptk_9f3k2m`, to recognise it later."],
-      ["key", "string", "The full secret. **Only present in the create response.**"],
-      ["created_at", "timestamp", "RFC 3339, UTC."],
-      ["last_used_at", "timestamp | null", "Last successful authentication."],
-      ["revoked_at", "timestamp | null", "Set once revoked."],
-    ],
-    example: { ...EX.apiKey, key: "ptk_9f3k2m7q4x8d1v6b3n0c5z2w9h4j7k1e8r5t2y6u3p0s" },
-  },
 ];
 
 // ------------------------------------------------------------------ endpoints
 //
 // param: [name, type, required, description]
-// request: what the samples send. `auth`: "key" | "session" | "none".
+// request: what the samples send. `auth`: "key" | "none".
 
 export const ENDPOINT_GROUPS = [
   {
@@ -428,7 +404,7 @@ export const ENDPOINT_GROUPS = [
         method: "GET",
         path: "/v1/webhook",
         auth: "key",
-        description: "Returns the webhook URL (empty until set) and the signing secret.",
+        description: "Returns the webhook URL (empty until set) and the signing secret. To rotate the secret, use the dashboard.",
         request: {},
         responses: [{ status: "200 OK", body: EX.webhook }],
       },
@@ -444,19 +420,6 @@ export const ENDPOINT_GROUPS = [
         responses: [
           { status: "200 OK", body: EX.webhook },
           { status: "422 Unprocessable Entity", body: err("invalid_webhook_url", "webhook url must be an absolute http(s) URL without credentials") },
-        ],
-      },
-      {
-        id: "rotate-secret",
-        title: "Rotate the signing secret",
-        method: "POST",
-        path: "/v1/webhook/rotate-secret",
-        auth: "session",
-        description: "Generates a new signing secret. The old one stops working immediately, including for retries, so deploy the new secret right away. Dashboard session only.",
-        request: {},
-        responses: [
-          { status: "200 OK", body: { ...EX.webhook, signing_secret: "whsec_8d2b6f1a9c4e7b0d3f5a2c8e1b6d9f0a7c3e5b1d8f2a4c6e" } },
-          { status: "403 Forbidden", body: err("user_session_required", "this endpoint requires a dashboard session") },
         ],
       },
       {
@@ -493,95 +456,21 @@ export const ENDPOINT_GROUPS = [
   },
   {
     id: "account",
-    title: "Account & API keys",
-    intro: "Identify the caller and manage API keys. Key management needs a dashboard session.",
+    title: "Account",
+    intro: "Check which account an API key belongs to.",
     endpoints: [
       {
         id: "me",
-        title: "Retrieve the caller",
+        title: "Verify your API key",
         method: "GET",
         path: "/v1/me",
         auth: "key",
-        description: "Returns the account the token belongs to. `user` is `null` when called with an API key. Handy for verifying a key at startup.",
+        description: "Returns the account the API key belongs to. Call it at startup or in a health check to confirm the key is valid.",
         request: {},
         responses: [{ status: "200 OK", body: { tenant: EX.tenant, user: null, auth_kind: "api_key" } }],
-      },
-      {
-        id: "create-key",
-        title: "Create an API key",
-        method: "POST",
-        path: "/v1/api-keys",
-        auth: "session",
-        description: "Creates a key. The `key` field is returned only in this response, so store it immediately. Dashboard session only.",
-        body: [["name", "string", true, "Your label, 1–100 characters."]],
-        request: { body: { name: "production backend" } },
-        responses: [{ status: "201 Created", body: OBJECTS_KEY_EXAMPLE() }],
-      },
-      {
-        id: "list-keys",
-        title: "List API keys",
-        method: "GET",
-        path: "/v1/api-keys",
-        auth: "session",
-        description: "All keys, including revoked ones. Secrets are never returned. Dashboard session only.",
-        request: {},
-        responses: [{ status: "200 OK", body: { data: [EX.apiKey] } }],
-      },
-      {
-        id: "revoke-key",
-        title: "Revoke an API key",
-        method: "DELETE",
-        path: "/v1/api-keys/{id}",
-        auth: "session",
-        description: "Requests with the key fail with `invalid_api_key` immediately. Irreversible. Dashboard session only.",
-        pathParams: [["id", "string", true, "The key ID (`key_…`)."]],
-        request: { path: { id: EX.apiKey.id } },
-        responses: [
-          { status: "204 No Content", body: null },
-          { status: "404 Not Found", body: err("api_key_not_found", "API key not found") },
-        ],
-      },
-      {
-        id: "register",
-        title: "Register",
-        method: "POST",
-        path: "/v1/auth/register",
-        auth: "none",
-        description: "Creates an account and its owner user and returns a session. Used by the dashboard; most integrations never call it.",
-        body: [
-          ["business_name", "string", true, "1–100 characters."],
-          ["email", "string", true, "Owner's email."],
-          ["password", "string", true, "10–72 characters."],
-        ],
-        request: { body: { business_name: "Acme Shop", email: "owner@acme.co.ke", password: "correct-horse-battery" } },
-        responses: [
-          { status: "201 Created", body: { token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…", expires_at: "2026-10-15T21:24:11Z", user: EX.user, tenant: EX.tenant } },
-          { status: "409 Conflict", body: err("email_taken", "an account with this email already exists") },
-        ],
-      },
-      {
-        id: "login",
-        title: "Log in",
-        method: "POST",
-        path: "/v1/auth/login",
-        auth: "none",
-        description: "Exchanges email and password for a session token (valid 12 hours by default).",
-        body: [
-          ["email", "string", true, "Account email."],
-          ["password", "string", true, "Account password."],
-        ],
-        request: { body: { email: "owner@acme.co.ke", password: "correct-horse-battery" } },
-        responses: [
-          { status: "200 OK", body: { token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…", expires_at: "2026-10-15T21:24:11Z", user: EX.user, tenant: EX.tenant } },
-          { status: "401 Unauthorized", body: err("invalid_credentials", "email or password is incorrect") },
-        ],
       },
     ],
   },
 ];
-
-function OBJECTS_KEY_EXAMPLE() {
-  return { ...EX.apiKey, key: "ptk_9f3k2m7q4x8d1v6b3n0c5z2w9h4j7k1e8r5t2y6u3p0s" };
-}
 
 export const WEBHOOK_RETRY_SCHEDULE = ["10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "4h", "8h"];

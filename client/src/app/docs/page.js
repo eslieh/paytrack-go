@@ -136,8 +136,7 @@ function Method({ m }) {
 
 function AuthBadge({ auth }) {
   if (auth === "none") return <span className={styles.authNone}>No auth</span>;
-  if (auth === "session") return <span className={styles.authSession}>Dashboard session only</span>;
-  return <span className={styles.authKey}>API key or session</span>;
+  return <span className={styles.authKey}>API key</span>;
 }
 
 function Params({ title, rows }) {
@@ -443,7 +442,7 @@ export default function DocsPage() {
             <p>From zero to a paid order in four steps.</p>
             <ol className={styles.steps}>
               <li>
-                <strong>Create an account and an API key.</strong> Sign up in the <Link href="/auth/register">dashboard</Link>, then go to
+                <strong>Get an API key.</strong> In the dashboard, go to
                 {" "}<Link href="/dashboard/api-keys">API keys → Create key</Link>. Copy the <code>ptk_…</code> key into your backend&apos;s secrets
                 as <code>PAYTRACK_API_KEY</code>. It&apos;s shown once.
               </li>
@@ -475,26 +474,15 @@ export default function DocsPage() {
           <div className={styles.prose}>
             <h2>Authentication</h2>
             <p>
-              Send a bearer token in the <code>Authorization</code> header of every request. There are two kinds:
-            </p>
-            <table className={styles.table}>
-              <thead><tr><th>Token</th><th>Looks like</th><th>Use it for</th></tr></thead>
-              <tbody>
-                <tr><td>API key</td><td><code>ptk_…</code></td><td>Your backend. Doesn&apos;t expire; revoke it from the dashboard.</td></tr>
-                <tr><td>Session</td><td>JWT</td><td>The dashboard. Returned by login/register, valid for 12 hours.</td></tr>
-              </tbody>
-            </table>
-            <p>
-              Both work on most endpoints. A few account-level endpoints (creating, listing and revoking API keys, rotating the webhook secret)
-              are <strong>dashboard session only</strong> and return <code>403 user_session_required</code> for API keys, so a leaked key
-              can&apos;t mint new keys or lock you out of your webhooks.
+              Authenticate every request with your API key as a bearer token:
+              {" "}<code>Authorization: Bearer ptk_…</code>. Keys don&apos;t expire; you create and revoke them in the dashboard.
             </p>
             <p>
-              Missing or bad tokens return <code>401</code> with <code>missing_token</code>, <code>invalid_api_key</code> or <code>invalid_token</code>.
+              A missing key returns <code>401 missing_token</code>; an unknown or revoked key returns <code>401 invalid_api_key</code>.
             </p>
             <Callout tone="warn">
-              Treat API keys like passwords. Use one key per environment or service, name them clearly, and revoke any key you suspect has leaked.
-              <code> last_used_at</code> on each key shows whether it&apos;s still in use.
+              Treat API keys like passwords. Keep them on your server, use one key per environment or service, and revoke any key you
+              suspect has leaked.
             </Callout>
           </div>
           <div className={styles.aside}>
@@ -820,7 +808,7 @@ do {
               <li>Orders are fulfilled on <code>payment.succeeded</code> only, and <code>payment.expired</code> is handled as &ldquo;unknown&rdquo;.</li>
               <li>You log <code>request_id</code> on API errors and branch on <code>error.code</code>, not <code>message</code>.</li>
               <li>A nightly job lists recent payments to reconcile against your orders, in case webhooks were missed.</li>
-              <li>The webhook signing secret is in your secret manager, and you know how to rotate it.</li>
+              <li>The webhook signing secret is in your secret manager, not in code.</li>
             </ul>
           </div>
         </Section>
