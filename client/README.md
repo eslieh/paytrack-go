@@ -7,7 +7,7 @@ The Next.js dashboard and marketing site for PayTrack. It talks to the Go API in
 1. Start the server (see [server/README.md](../server/README.md)). The API listens on `:8080` by default.
 2. Let the dashboard origin through CORS. In `server/.env`, set:
    ```sh
-   CORS_ALLOWED_ORIGINS=http://localhost:3000
+   CORS_ALLOWED_ORIGINS=http://localhost:3009
    ```
 3. Point the client at the API:
    ```sh
@@ -16,7 +16,7 @@ The Next.js dashboard and marketing site for PayTrack. It talks to the Go API in
 4. Run the dev server:
    ```sh
    npm install
-   npm run dev                  # http://localhost:3000
+   npm run dev                  # http://localhost:3009
    ```
 
 ## Pages
