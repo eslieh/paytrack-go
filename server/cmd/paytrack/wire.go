@@ -48,13 +48,16 @@ type modules struct {
 	callback *callbackapp.Service
 }
 
-func build(cfg *config.Config, pool *pgxpool.Pool) (*modules, error) {
+func build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*modules, error) {
 	m := &modules{callback: callbackapp.NewService(callbackpg.New(pool))}
 	if cfg.EncryptionKey == nil { // callback-only process
 		return m, nil
 	}
 	cipher, err := crypto.NewCipher(cfg.EncryptionKey)
 	if err != nil {
+		return nil, err
+	}
+	if err := crypto.VerifyKey(ctx, pool, cipher); err != nil {
 		return nil, err
 	}
 	m.tenants, err = tenantapp.NewService(tenantpg.New(pool, cipher), security.Bcrypt{},
@@ -87,7 +90,7 @@ func runRole(ctx context.Context, role config.Role, cfg *config.Config) error {
 		}
 	}
 
-	m, err := build(cfg, pool)
+	m, err := build(ctx, cfg, pool)
 	if err != nil {
 		return err
 	}

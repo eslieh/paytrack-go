@@ -1,0 +1,76 @@
+# Production stack for a single EC2 host. Reads only .env.production:
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# api/callback listen on localhost only; put a TLS reverse proxy (Caddy,
+# nginx) or an ALB in front: API domain -> 127.0.0.1:9710,
+# callback domain -> 127.0.0.1:9711.
+name: paytrack
+
+x-app: &app
+  build: .
+  image: paytrack:prod
+  env_file: .env.production
+  environment:
+    KAFKA_BROKERS: kafka:9092
+  restart: always
+  logging: &logging
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
+services:
+  kafka:
+    image: apache/kafka:3.9.0
+    restart: always
+    logging: *logging
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    volumes: [kafkadata:/var/lib/kafka/data]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      retries: 30
+
+  migrate:
+    build: .
+    image: paytrack:prod
+    command: ["migrate"]
+    env_file: .env.production
+    logging: *logging
+
+  api:
+    <<: *app
+    command: ["api"]
+    ports: ["127.0.0.1:9710:9710"]
+
+  callback:
+    <<: *app
+    command: ["callback"]
+    ports: ["127.0.0.1:9711:9711"]
+
+  worker:
+    <<: *app
+    command: ["worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+
+volumes:
+  kafkadata:

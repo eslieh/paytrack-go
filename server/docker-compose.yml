@@ -1,12 +1,11 @@
-# Single-host stack. DATABASE_URL comes from .env (external Postgres).
-# In production on EC2, run the same image per role on 2+ instances across
-# AZs, with MSK instead of the kafka container below.
+# Development stack. Reads .env. For production use docker-compose.prod.yml,
+# which reads only .env.production.
 name: paytrack
 
 x-app: &app
   build: .
   image: paytrack:dev
-  env_file: ${ENV_FILE:-.env}
+  env_file: .env
   environment:
     KAFKA_BROKERS: kafka:9092
   restart: unless-stopped
@@ -42,7 +41,7 @@ services:
     build: .
     image: paytrack:dev
     command: ["migrate"]
-    env_file: ${ENV_FILE:-.env}
+    env_file: .env
 
   api:
     <<: *app
