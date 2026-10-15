@@ -23,6 +23,15 @@ const (
 	RoleAll      Role = "all" // every role in one process (local dev)
 )
 
+type MpesaConfig struct {
+	Env            string // sandbox | production
+	BaseURL        string
+	ConsumerKey    string
+	ConsumerSecret string
+	ShortCode      string
+	Passkey        string
+}
+
 type Config struct {
 	DatabaseURL string
 
@@ -47,8 +56,8 @@ type Config struct {
 	CallbackAllowedCIDRs  []*net.IPNet
 	CallbackTrustXFF      bool
 
-	DarajaSandboxURL    string
-	DarajaProductionURL string
+	// Platform Daraja app: signs every STK push and status query.
+	Mpesa MpesaConfig
 
 	WebhookAllowPrivate bool // allow webhook URLs that resolve to private IPs (dev only)
 
@@ -57,15 +66,20 @@ type Config struct {
 
 func Load(role Role) (*Config, error) {
 	c := &Config{
-		DatabaseURL:            normalizeDatabaseURL(os.Getenv("DATABASE_URL")),
-		APIAddr:                env("API_ADDR", ":8080"),
-		CallbackAddr:           env("CALLBACK_ADDR", ":8081"),
-		WorkerAddr:             env("WORKER_ADDR", ":8082"),
-		KafkaBrokers:           list(os.Getenv("KAFKA_BROKERS")),
-		CORSAllowedOrigins:     list(os.Getenv("CORS_ALLOWED_ORIGINS")),
-		PublicCallbackBaseURL:  strings.TrimRight(os.Getenv("PUBLIC_CALLBACK_BASE_URL"), "/"),
-		DarajaSandboxURL:       env("DARAJA_SANDBOX_URL", "https://sandbox.safaricom.co.ke"),
-		DarajaProductionURL:    env("DARAJA_PRODUCTION_URL", "https://api.safaricom.co.ke"),
+		DatabaseURL:           normalizeDatabaseURL(os.Getenv("DATABASE_URL")),
+		APIAddr:               env("API_ADDR", ":8080"),
+		CallbackAddr:          env("CALLBACK_ADDR", ":8081"),
+		WorkerAddr:            env("WORKER_ADDR", ":8082"),
+		KafkaBrokers:          list(os.Getenv("KAFKA_BROKERS")),
+		CORSAllowedOrigins:    list(os.Getenv("CORS_ALLOWED_ORIGINS")),
+		PublicCallbackBaseURL: strings.TrimRight(os.Getenv("PUBLIC_CALLBACK_BASE_URL"), "/"),
+		Mpesa: MpesaConfig{
+			Env:            env("MPESA_ENV", "sandbox"),
+			ConsumerKey:    os.Getenv("MPESA_CONSUMER_KEY"),
+			ConsumerSecret: os.Getenv("MPESA_CONSUMER_SECRET"),
+			ShortCode:      os.Getenv("MPESA_SHORTCODE"),
+			Passkey:        os.Getenv("MPESA_PASSKEY"),
+		},
 		CallbackTrustXFF:       os.Getenv("CALLBACK_TRUST_XFF") == "true",
 		WebhookAllowPrivate:    os.Getenv("WEBHOOK_ALLOW_PRIVATE") == "true",
 		KafkaPartitions:        intEnv("KAFKA_PARTITIONS", 6),
@@ -95,6 +109,24 @@ func Load(role Role) (*Config, error) {
 			missing = append(missing, "ENCRYPTION_KEY (base64 of 32 random bytes: openssl rand -base64 32)")
 		}
 		c.EncryptionKey = key
+	}
+	if has(RoleAPI, RoleWorker) {
+		m := &c.Mpesa
+		switch m.Env {
+		case "sandbox":
+			m.BaseURL = "https://sandbox.safaricom.co.ke"
+		case "production":
+			m.BaseURL = "https://api.safaricom.co.ke"
+		default:
+			missing = append(missing, `MPESA_ENV ("sandbox" or "production")`)
+		}
+		if u := os.Getenv("DARAJA_BASE_URL"); u != "" { // testing against a mock
+			m.BaseURL = strings.TrimRight(u, "/")
+		}
+		need("MPESA_CONSUMER_KEY", m.ConsumerKey != "")
+		need("MPESA_CONSUMER_SECRET", m.ConsumerSecret != "")
+		need("MPESA_SHORTCODE", m.ShortCode != "")
+		need("MPESA_PASSKEY", m.Passkey != "")
 	}
 	if has(RoleAPI) {
 		c.JWTSecret = []byte(os.Getenv("JWT_SECRET"))

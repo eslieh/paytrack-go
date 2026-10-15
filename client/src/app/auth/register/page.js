@@ -1,37 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { Mail, Lock, UserRound, ArrowRight } from "lucide-react";
-import { useState } from "react";
+import { Mail, Lock, Building2, ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext.jsx";
 
 export default function RegisterPage() {
-  const [name, setName] = useState("");
+  const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+  const { signup, token, loading } = useAuth();
 
-  const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+  useEffect(() => {
+    if (!loading && token) router.replace("/dashboard");
+  }, [loading, token, router]);
 
   async function onSubmit(e) {
     e.preventDefault();
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch(`${BASE_URL}/auth/dashboard/tenant/signup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `Signup failed (${res.status})`);
-      }
-      const data = await res.json();
-      localStorage.setItem("paytrack_token", data.access_token);
-      localStorage.setItem("paytrack_user", JSON.stringify(data.user));
+      await signup(businessName.trim(), email.trim(), password);
       router.push("/dashboard");
     } catch (err) {
       setError(err.message || "Signup failed");
@@ -44,15 +37,15 @@ export default function RegisterPage() {
     <div>
       <div className="card-header">
         <h1 className="card-title">Create your Paytrack account</h1>
-        <p className="card-subtitle">For tenants managing rent and invoices</p>
+        <p className="card-subtitle">Start collecting M-Pesa payments through your own PayBill or Till</p>
       </div>
       <div className="card-body">
         <form className="stack" onSubmit={onSubmit}>
-          <label className="stack" htmlFor="name">
-            <span style={{fontSize: 13, color: "#555b73", fontWeight: 600}}>Full name</span>
+          <label className="stack" htmlFor="business_name">
+            <span style={{fontSize: 13, color: "#555b73", fontWeight: 600}}>Business name</span>
             <div style={{position: "relative", width: "100%"}}>
-              <UserRound size={18} color="#7b82a1" style={{position: "absolute", left: 12, top: 12}} />
-              <input id="name" className="input" placeholder="Ada Lovelace" style={{paddingLeft: 38}} value={name} onChange={(e)=>setName(e.target.value)} required />
+              <Building2 size={18} color="#7b82a1" style={{position: "absolute", left: 12, top: 12}} />
+              <input id="business_name" className="input" placeholder="Acme Shop" maxLength={100} autoComplete="organization" style={{paddingLeft: 38}} value={businessName} onChange={(e)=>setBusinessName(e.target.value)} required />
             </div>
           </label>
 
@@ -60,7 +53,7 @@ export default function RegisterPage() {
             <span style={{fontSize: 13, color: "#555b73", fontWeight: 600}}>Email</span>
             <div style={{position: "relative", width: "100%"}}>
               <Mail size={18} color="#7b82a1" style={{position: "absolute", left: 12, top: 12}} />
-              <input id="email" type="email" className="input" placeholder="you@example.com" style={{paddingLeft: 38}} value={email} onChange={(e)=>setEmail(e.target.value)} required />
+              <input id="email" type="email" autoComplete="email" className="input" placeholder="you@example.com" style={{paddingLeft: 38}} value={email} onChange={(e)=>setEmail(e.target.value)} required />
             </div>
           </label>
 
@@ -68,7 +61,7 @@ export default function RegisterPage() {
             <span style={{fontSize: 13, color: "#555b73", fontWeight: 600}}>Password</span>
             <div style={{position: "relative", width: "100%"}}>
               <Lock size={18} color="#7b82a1" style={{position: "absolute", left: 12, top: 12}} />
-              <input id="password" type="password" className="input" placeholder="••••••••" style={{paddingLeft: 38}} value={password} onChange={(e)=>setPassword(e.target.value)} required />
+              <input id="password" type="password" autoComplete="new-password" minLength={10} maxLength={72} className="input" placeholder="At least 10 characters" style={{paddingLeft: 38}} value={password} onChange={(e)=>setPassword(e.target.value)} required />
             </div>
           </label>
 
@@ -88,5 +81,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-
-

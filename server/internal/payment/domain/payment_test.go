@@ -5,11 +5,16 @@ import (
 	"time"
 )
 
-var t0 = time.Date(2026, 10, 15, 10, 0, 0, 0, time.UTC)
+var (
+	t0      = time.Date(2026, 10, 15, 10, 0, 0, 0, time.UTC)
+	paybill = Destination{ChannelID: "chn_1", Type: DestinationPaybill, PartyB: "400200", Active: true}
+	bank    = Destination{ChannelID: "chn_2", Type: DestinationBank, PartyB: "247247", BankName: "Equity Bank", AccountNumber: "0123456789", Active: true}
+	till    = Destination{ChannelID: "chn_3", Type: DestinationTill, PartyB: "123456", Active: true}
+)
 
 func newPayment(t *testing.T) *Payment {
 	t.Helper()
-	p, err := New(NewParams{ID: "pay_1", TenantID: "ten_1", ChannelID: "chn_1", Amount: 100,
+	p, err := New(NewParams{ID: "pay_1", TenantID: "ten_1", Destination: paybill, Amount: 100,
 		Phone: "0712345678", AccountReference: "INV-1", CallbackToken: "tok"}, t0)
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +39,7 @@ func TestNormalizePhone(t *testing.T) {
 }
 
 func TestNewValidates(t *testing.T) {
-	base := NewParams{Amount: 10, Phone: "0712345678", AccountReference: "A"}
+	base := NewParams{Destination: paybill, Amount: 10, Phone: "0712345678", AccountReference: "A"}
 	cases := map[string]func(*NewParams){
 		"zero amount": func(p *NewParams) { p.Amount = 0 },
 		"too much":    func(p *NewParams) { p.Amount = MaxAmount + 1 },
@@ -112,5 +117,28 @@ func TestInitiationFailed(t *testing.T) {
 	p.MarkInitiationFailed("Invalid PartyB", t0)
 	if p.Status != StatusFailed || p.FailureReason != "Invalid PartyB" || p.NextCheckAt != nil {
 		t.Fatalf("got %+v", p)
+	}
+}
+
+func TestAccountReferenceRouting(t *testing.T) {
+	cases := []struct {
+		dest      Destination
+		requested string
+		want      string
+	}{
+		{bank, "", "0123456789"},
+		{bank, "0123456789", "0123456789"},
+		{Destination{Type: DestinationPaybill, PartyB: "400200", AccountNumber: "DEFAULT"}, "", "DEFAULT"},
+		{Destination{Type: DestinationPaybill, PartyB: "400200", AccountNumber: "DEFAULT"}, "INV-9", "INV-9"},
+		{till, "", "Till Payment"},
+	}
+	for _, c := range cases {
+		p, err := New(NewParams{Destination: c.dest, Amount: 1, Phone: "0712345678", AccountReference: c.requested}, t0)
+		if err != nil || p.AccountReference != c.want || p.PartyB != c.dest.PartyB || p.DestinationType != c.dest.Type {
+			t.Errorf("%s %q: got %+v, %v; want ref %q", c.dest.Type, c.requested, p, err, c.want)
+		}
+	}
+	if DestinationTill.TransactionType() != "CustomerBuyGoodsOnline" || DestinationBank.TransactionType() != "CustomerPayBillOnline" {
+		t.Error("transaction types")
 	}
 }

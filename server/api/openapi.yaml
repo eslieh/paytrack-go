@@ -108,6 +108,18 @@ paths:
         "204": { description: Revoked }
         "404": { $ref: "#/components/responses/Error" }
 
+  /v1/banks:
+    get:
+      tags: [channels]
+      summary: Banks available as bank-channel destinations
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/Bank" } } } }
+
   /v1/channels:
     get:
       tags: [channels]
@@ -120,24 +132,26 @@ paths:
               schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/Channel" } } } }
     post:
       tags: [channels]
-      summary: Register a Daraja channel
-      description: Credentials are encrypted at rest and never returned.
+      summary: Register a payment destination
+      description: |
+        STK pushes are always initiated with the platform's Daraja app. A channel only
+        decides where the money is routed:
+        - `bank`: `bank_code` (from `/v1/banks`) + `account_number` (the bank account credited)
+        - `paybill`: `business_number` + optional default `account_number`
+        - `till`: `business_number` (Buy Goods)
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [name, type, environment, short_code, consumer_key, consumer_secret, passkey]
+              required: [name, type]
               properties:
                 name: { type: string }
-                type: { type: string, enum: [paybill, till] }
-                environment: { type: string, enum: [sandbox, production] }
-                short_code: { type: string, pattern: "^\\d{5,7}$", description: "PayBill number, or Buy Goods store number for tills" }
-                till_number: { type: string, pattern: "^\\d{5,7}$", description: "Required when type=till" }
-                consumer_key: { type: string }
-                consumer_secret: { type: string }
-                passkey: { type: string }
+                type: { type: string, enum: [bank, paybill, till] }
+                bank_code: { type: string, description: "Required for bank" }
+                business_number: { type: string, pattern: "^\\d{5,7}$", description: "Required for paybill and till" }
+                account_number: { type: string, maxLength: 12, description: "Required for bank; optional default for paybill; ignored for till" }
       responses:
         "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Channel" } } } }
         "422": { $ref: "#/components/responses/Error" }
@@ -221,12 +235,18 @@ paths:
           application/json:
             schema:
               type: object
-              required: [channel_id, amount, phone, account_reference]
+              required: [channel_id, amount, phone]
               properties:
                 channel_id: { type: string }
                 amount: { type: integer, minimum: 1, maximum: 250000, description: Whole KES }
                 phone: { type: string, example: "0712345678" }
-                account_reference: { type: string, maxLength: 12 }
+                account_reference:
+                  type: string
+                  maxLength: 12
+                  description: |
+                    bank: omit (always the channel's account_number; a different value is rejected).
+                    paybill: overrides the channel default; required if the channel has none.
+                    till: optional, defaults to "Till Payment".
                 description: { type: string, maxLength: 13, default: Payment }
                 metadata: { type: object, additionalProperties: { type: string }, maxProperties: 20 }
       responses:
@@ -325,15 +345,20 @@ components:
     APIKeyList:
       type: object
       properties: { data: { type: array, items: { $ref: "#/components/schemas/APIKey" } } }
+    Bank:
+      type: object
+      properties:
+        code: { type: string, example: "247247", description: "The bank's PayBill (used as PartyB)" }
+        name: { type: string, example: Equity Bank }
     Channel:
       type: object
       properties:
         id: { type: string }
         name: { type: string }
-        type: { type: string, enum: [paybill, till] }
-        environment: { type: string, enum: [sandbox, production] }
-        short_code: { type: string }
-        till_number: { type: string }
+        type: { type: string, enum: [bank, paybill, till] }
+        business_number: { type: string, description: "PartyB: the bank's PayBill, the PayBill, or the Till" }
+        bank_name: { type: string }
+        account_number: { type: string }
         active: { type: boolean }
         created_at: { type: string, format: date-time }
     Webhook:
@@ -349,6 +374,9 @@ components:
       properties:
         id: { type: string, example: pay_01k7... }
         channel_id: { type: string }
+        destination_type: { type: string, enum: [bank, paybill, till], description: Routing snapshot at initiation }
+        business_number: { type: string, description: PartyB the money was routed to }
+        bank_name: { type: string }
         status: { $ref: "#/components/schemas/PaymentStatus" }
         amount: { type: integer }
         currency: { type: string, enum: [KES] }

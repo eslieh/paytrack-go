@@ -1,6 +1,6 @@
 # PayTrack server
 
-A multi-tenant M-Pesa STK push router. Tenants register their Daraja channels, PayTrack sends STK pushes for them, and their backends receive signed webhooks with the outcome.
+A multi-tenant M-Pesa STK push router. Tenants register payment destinations (a bank account, a PayBill, or a Till). PayTrack sends STK pushes with the platform's Daraja app, routing the money to the tenant's destination, and their backends receive signed webhooks with the outcome.
 
 - Design and HA notes: [ARCHITECTURE.md](ARCHITECTURE.md)
 - API contract (for the frontend and tenant integrations): [api/openapi.yaml](api/openapi.yaml)
@@ -13,6 +13,7 @@ A multi-tenant M-Pesa STK push router. Tenants register their Daraja channels, P
    - `ENCRYPTION_KEY`: generate with `openssl rand -base64 32`.
    - `JWT_SECRET`: generate with `openssl rand -base64 48`.
    - `PUBLIC_CALLBACK_BASE_URL`: a public HTTPS URL that forwards to the callback role (`:8081`), for example `ngrok http 8081`. Daraja won't call `localhost`.
+   - `MPESA_*`: the platform Daraja app (consumer key and secret, shortcode, passkey). It is used for every tenant's pushes.
 2. Start everything:
    ```sh
    docker compose up --build        # kafka + migrate + api + callback + worker
@@ -30,10 +31,12 @@ A multi-tenant M-Pesa STK push router. Tenants register their Daraja channels, P
    # with the JWT: create an API key for the tenant backend, set the webhook URL
    curl -XPOST localhost:8080/v1/api-keys -H "Authorization: Bearer $JWT" -d '{"name":"backend"}'
    curl -XPUT  localhost:8080/v1/webhook  -H "Authorization: Bearer $JWT" -d '{"url":"https://shop.co.ke/hooks/paytrack"}'
-   # with the API key: register a channel and charge a customer
-   curl -XPOST localhost:8080/v1/channels -H "Authorization: Bearer $KEY" -d '{"name":"Sandbox","type":"paybill","environment":"sandbox","short_code":"174379","consumer_key":"…","consumer_secret":"…","passkey":"…"}'
+   # with the API key: register a destination and charge a customer
+   curl localhost:8080/v1/banks
+   curl -XPOST localhost:8080/v1/channels -H "Authorization: Bearer $KEY" -d '{"name":"Savings","type":"bank","bank_code":"247247","account_number":"0123456789"}'
+   curl -XPOST localhost:8080/v1/channels -H "Authorization: Bearer $KEY" -d '{"name":"Shop","type":"till","business_number":"123456"}'
    curl -XPOST localhost:8080/v1/payments -H "Authorization: Bearer $KEY" -H "Idempotency-Key: order-123" \
-        -d '{"channel_id":"chn_…","amount":10,"phone":"0712345678","account_reference":"ORDER123"}'
+        -d '{"channel_id":"chn_…","amount":10,"phone":"0712345678"}'
    ```
 
 ## Roles

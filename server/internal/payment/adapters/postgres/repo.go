@@ -27,14 +27,14 @@ var _ app.Repository = (*Repo)(nil)
 
 func New(pool *pgxpool.Pool) *Repo { return &Repo{pool: pool} }
 
-const cols = `id, tenant_id, channel_id, idempotency_key, request_hash, status, amount, phone,
+const cols = `id, tenant_id, channel_id, destination_type, party_b, bank_name, idempotency_key, request_hash, status, amount, phone,
 	account_reference, description, metadata, callback_token, merchant_request_id, checkout_request_id,
 	mpesa_receipt, result_code, result_desc, failure_reason, check_attempts, next_check_at, version,
 	created_at, updated_at, completed_at`
 
 func scan(row pgx.Row) (*domain.Payment, error) {
 	var p domain.Payment
-	err := row.Scan(&p.ID, &p.TenantID, &p.ChannelID, &p.IdempotencyKey, &p.RequestHash, &p.Status, &p.Amount,
+	err := row.Scan(&p.ID, &p.TenantID, &p.ChannelID, &p.DestinationType, &p.PartyB, &p.BankName, &p.IdempotencyKey, &p.RequestHash, &p.Status, &p.Amount,
 		&p.Phone, &p.AccountReference, &p.Description, &p.Metadata, &p.CallbackToken, &p.MerchantRequestID,
 		&p.CheckoutRequestID, &p.MpesaReceipt, &p.ResultCode, &p.ResultDesc, &p.FailureReason, &p.CheckAttempts,
 		&p.NextCheckAt, &p.Version, &p.CreatedAt, &p.UpdatedAt, &p.CompletedAt)
@@ -56,8 +56,8 @@ func (r *Repo) Create(ctx context.Context, p *domain.Payment) error {
 		return err
 	}
 	_, err = r.pool.Exec(ctx, `INSERT INTO payment.payments (`+cols+`)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
-		p.ID, p.TenantID, p.ChannelID, p.IdempotencyKey, p.RequestHash, p.Status, p.Amount, p.Phone,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
+		p.ID, p.TenantID, p.ChannelID, p.DestinationType, p.PartyB, p.BankName, p.IdempotencyKey, p.RequestHash, p.Status, p.Amount, p.Phone,
 		p.AccountReference, p.Description, string(mdJSON), p.CallbackToken, p.MerchantRequestID, p.CheckoutRequestID,
 		p.MpesaReceipt, p.ResultCode, p.ResultDesc, p.FailureReason, p.CheckAttempts, p.NextCheckAt, p.Version,
 		p.CreatedAt, p.UpdatedAt, p.CompletedAt)

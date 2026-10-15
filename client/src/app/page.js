@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useState } from "react";
 import styles from "./page.module.css";
+import { getBaseUrl } from "@/lib/api";
+
+const API = getBaseUrl();
 import {
   ArrowRight,
   CheckCircle2,
@@ -79,9 +82,9 @@ export default function Home() {
         <div className={styles.heroCopy}>
           <h1>M‑Pesa integration, made effortless for developers</h1>
           <p>
-            Ship payments fast with clean APIs, signed webhooks, token‑scoped
-            keys and a live wallet you can trust. Configure callbacks, track
-            transactions and automate payouts — all in one place.
+            Plug in your own PayBill or Till, send STK pushes with one API call
+            and get signed webhooks when customers pay. Track every payment and
+            delivery from a single dashboard.
           </p>
           <div className={styles.ctaRow}>
             <Link href="/auth/register" className={styles.ctaPrimary}>
@@ -95,68 +98,66 @@ export default function Home() {
 
           <ul className={styles.points}>
             <li>
-              <CheckCircle2 size={18} /> STK Push, C2B, B2C & B2B built‑ins 
+              <CheckCircle2 size={18} /> STK Push on your own PayBill or Till
             </li>
             <li>
-              <CheckCircle2 size={18} /> Signed webhooks, idempotency and replay
-              protection
+              <CheckCircle2 size={18} /> Signed webhooks with automatic retries
+              and redelivery
             </li>
             <li>
-              <CheckCircle2 size={18} /> Wallet, transactions and scheduled
-              auto‑payouts
+              <CheckCircle2 size={18} /> Idempotent requests, so retries never
+              double‑charge
             </li>
           </ul>
         </div>
 
         <div className={styles.preview} aria-hidden>
           <div className={styles.previewHeader}>
-            <span className={styles.badge}>Wallet</span>
+            <span className={styles.badge}>Payment</span>
             <div className={styles.previewActions}>
-              <span>Tenant Wallet</span>
+              <span>STK Push</span>
               <button className={styles.smallBtn}>View dashboard</button>
             </div>
           </div>
           <div className={styles.previewBody}>
             <div className={styles.detailCard}>
               <div className={styles.detailRow}>
-                <span>Balance</span>
+                <span>Amount</span>
                 <strong>
-                  <span className={styles.mono}>KES 0.00</span>
+                  <span className={styles.mono}>KES 250.00</span>
                 </strong>
               </div>
               <div className={styles.detailRow}>
-                <span>Account</span>
+                <span>Status</span>
                 <strong>
-                  <span className={styles.mono}>•••• 1234</span>
+                  <span className={styles.mono}>succeeded</span>
                 </strong>
               </div>
-              {/* <a className={styles.pdfBtn} href="/dashboard/wallet">Open wallet</a> */}
             </div>
             <div className={styles.historyCard}>
-              <h4>Recent transactions</h4>
+              <h4>Recent payments</h4>
               <div className={styles.historyItem}>
-                <span className={styles.mono}>CREDIT</span> • STK Push •{" "}
+                <span className={styles.mono}>SUCCEEDED</span> • ORDER123 •{" "}
                 <span className={styles.mono}>KES 250.00</span>
               </div>
               <div className={styles.historyItem}>
-                <span className={styles.mono}>DEBIT</span> • Payout •{" "}
+                <span className={styles.mono}>PENDING</span> • ORDER124 •{" "}
                 <span className={styles.mono}>KES 1,000.00</span>
               </div>
               <div className={styles.historyItem}>
-                <span className={styles.mono}>GATEWAY</span> • M‑Pesa
+                <span className={styles.mono}>CANCELLED</span> • ORDER125
               </div>
             </div>
             <div className={styles.itemsCard}>
               <h4>Configuration</h4>
               <div className={styles.itemRow}>
-                <span>Callback URL</span>
-                <strong>https://your.app/webhooks/mpesa</strong>
+                <span>Webhook URL</span>
+                <strong>https://your.app/hooks/paytrack</strong>
               </div>
               <div className={styles.itemRow}>
-                <span>Auto payout</span>
-                <strong>Disabled</strong>
+                <span>Channel</span>
+                <strong>PayBill 174379 · sandbox</strong>
               </div>
-              {/* <a className={styles.pdfBtn} href="/dashboard/api-keys">Manage API keys</a> */}
             </div>
           </div>
         </div>
@@ -166,54 +167,53 @@ export default function Home() {
         <div className={styles.feature}>
           <Zap />
           <h3>Blazing fast</h3>
-          <p>Low latency callbacks and retries built in.</p>
+          <p>Event-driven pipeline with status polling as a fallback.</p>
         </div>
         <div className={styles.feature}>
           <Webhook />
           <h3>Webhooks</h3>
-          <p>Signed payloads, retries and replay protection.</p>
+          <p>HMAC-signed events, ~16h of retries and one-click redelivery.</p>
         </div>
         <div className={styles.feature}>
           <Shield />
           <h3>Secure</h3>
-          <p>Token-scoped keys and IP allow-listing.</p>
+          <p>Daraja credentials encrypted at rest; revocable API keys.</p>
         </div>
         <div className={styles.feature}>
           <Code2 />
-          <h3>SDKs</h3>
-          <p>Type-safe SDKs and Postman collection.</p>
+          <h3>Clean API</h3>
+          <p>REST + OpenAPI spec, idempotency keys and cursor pagination.</p>
         </div>
       </section>
 
       <section id="code" className={styles.codeBlock}>
         <div className={styles.codeHeader}>Charge with STK Push</div>
         <pre>
-          {`curl -X POST https://pay.geninworld.com/api/payment_request \\\n+  -H "Authorization: Bearer sk_test_***" \\\n+  -H "Content-Type: application/json" \\\n+  -d '{
-            "amount": "15.00",
-            "currency": "KES",
-            "request_ref": "unique_request_reference",
-            "mpesa_number": "254700000000"
-          }'`}
+          {`curl -X POST ${API}/v1/payments \\
+  -H "Authorization: Bearer ptk_***" \\
+  -H "Idempotency-Key: order-123" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "channel_id": "chn_***",
+    "amount": 250,
+    "phone": "0712345678",
+    "account_reference": "ORDER123"
+  }'`}
         </pre>
-        <div className={styles.codeHeader}>Disburse to B2B/B2C Account</div>
+        <div className={styles.codeHeader}>Check payment status</div>
         <pre>
-          {`curl -X POST https://pay.geninworld.com/api/disburse_request \\\n+  -H "Authorization: Bearer sk_test_***" \\\n+  -H "Content-Type: application/json" \\\n+  -d '{
-            "amount": "12",
-            // "mpesa_number": "254700000000", optional to b2b account
-            "request_ref": "abcdefesscndjkcd",
-            "b2b_account": {
-                "paybill_number": "1234",
-                "account_number": "456"
-            } // optional to b2c account
-          }'`}
+          {`curl ${API}/v1/payments/pay_*** \\
+  -H "Authorization: Bearer ptk_***"`}
         </pre>
-        <div className={styles.codeHeader}>Query collection status</div>
+        <div className={styles.codeHeader}>Receive the outcome by webhook</div>
         <pre>
-          {`curl -X GET https://pay.geninworld.com/api/payment/<string:request_ref>/status \\\n+  -H "Authorization: Bearer sk_test_***"`}
-        </pre>
-        <div className={styles.codeHeader}>Query Disbursement Status</div>
-        <pre>
-          {`curl -X GET https://pay.geninworld.com/api/disburse/<string:disbursement_identifier>/status \\\n+  -H "Authorization: Bearer sk_test_***"`}
+          {`POST https://your.app/hooks/paytrack
+PayTrack-Event-Type: payment.succeeded
+PayTrack-Signature: t=1760512345,v1=5f2b…
+
+{ "id": "evt_***", "type": "payment.succeeded",
+  "data": { "id": "pay_***", "status": "succeeded", "amount": 250,
+            "mpesa_receipt_number": "TJK3XXXXXX", ... } }`}
         </pre>
       </section>
 
@@ -230,10 +230,10 @@ export default function Home() {
               <CheckCircle2 size={18} /> Free test mode
             </li>
             <li>
-              <CheckCircle2 size={18} /> Instant settlements & payouts
+              <CheckCircle2 size={18} /> Funds settle straight to your PayBill or Till
             </li>
             <li>
-              <CheckCircle2 size={18} /> Normal M-pesa b2c and b2b changes apply
+              <CheckCircle2 size={18} /> Standard M-Pesa charges apply
             </li>
           </ul>
           <Link href="/auth/register" className={styles.ctaPrimary}>

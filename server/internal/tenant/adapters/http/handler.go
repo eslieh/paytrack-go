@@ -29,6 +29,7 @@ func (h *Handler) Register(mux *http.ServeMux, authed func(http.Handler) http.Ha
 	mux.Handle("POST /v1/api-keys", userOnly(h.createKey))
 	mux.Handle("DELETE /v1/api-keys/{id}", userOnly(h.revokeKey))
 
+	mux.HandleFunc("GET /v1/banks", h.banks)
 	mux.Handle("GET /v1/channels", authed(http.HandlerFunc(h.listChannels)))
 	mux.Handle("POST /v1/channels", authed(http.HandlerFunc(h.createChannel)))
 	mux.Handle("GET /v1/channels/{id}", authed(http.HandlerFunc(h.getChannel)))
@@ -80,21 +81,20 @@ func toKey(k *domain.APIKey) apiKeyView {
 	return apiKeyView{ID: k.ID, Name: k.Name, Prefix: k.Prefix, CreatedAt: k.CreatedAt, LastUsedAt: k.LastUsedAt, RevokedAt: k.RevokedAt}
 }
 
-// channelView never includes credentials.
 type channelView struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Type        string    `json:"type"`
-	Environment string    `json:"environment"`
-	ShortCode   string    `json:"short_code"`
-	TillNumber  string    `json:"till_number,omitempty"`
-	Active      bool      `json:"active"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Type           string    `json:"type"`
+	BusinessNumber string    `json:"business_number"` // PartyB
+	BankName       string    `json:"bank_name,omitempty"`
+	AccountNumber  string    `json:"account_number,omitempty"`
+	Active         bool      `json:"active"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 func toChannel(c *domain.Channel) channelView {
-	return channelView{ID: c.ID, Name: c.Name, Type: string(c.Type), Environment: string(c.Environment),
-		ShortCode: c.ShortCode, TillNumber: c.TillNumber, Active: c.Active, CreatedAt: c.CreatedAt}
+	return channelView{ID: c.ID, Name: c.Name, Type: string(c.Type), BusinessNumber: c.PartyB,
+		BankName: c.BankName, AccountNumber: c.AccountNumber, Active: c.Active, CreatedAt: c.CreatedAt}
 }
 
 type webhookView struct {
@@ -201,6 +201,10 @@ func (h *Handler) revokeKey(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) banks(w http.ResponseWriter, r *http.Request) {
+	httpx.JSON(w, http.StatusOK, list[domain.Bank]{Data: h.svc.Banks()})
+}
+
 func (h *Handler) listChannels(w http.ResponseWriter, r *http.Request) {
 	cs, err := h.svc.ListChannels(r.Context(), auth.MustTenant(r.Context()))
 	if err != nil {
@@ -218,21 +222,17 @@ func (h *Handler) createChannel(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name           string `json:"name"`
 		Type           string `json:"type"`
-		Environment    string `json:"environment"`
-		ShortCode      string `json:"short_code"`
-		TillNumber     string `json:"till_number"`
-		ConsumerKey    string `json:"consumer_key"`
-		ConsumerSecret string `json:"consumer_secret"`
-		Passkey        string `json:"passkey"`
+		BankCode       string `json:"bank_code"`
+		BusinessNumber string `json:"business_number"`
+		AccountNumber  string `json:"account_number"`
 	}
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
 	c, err := h.svc.RegisterChannel(r.Context(), auth.MustTenant(r.Context()), domain.NewChannelParams{
-		Name: req.Name, Type: domain.ChannelType(req.Type), Environment: domain.Environment(req.Environment),
-		ShortCode: req.ShortCode, TillNumber: req.TillNumber,
-		Credentials: domain.Credentials{ConsumerKey: req.ConsumerKey, ConsumerSecret: req.ConsumerSecret, Passkey: req.Passkey},
+		Name: req.Name, Type: domain.ChannelType(req.Type), BankCode: req.BankCode,
+		BusinessNumber: req.BusinessNumber, AccountNumber: req.AccountNumber,
 	})
 	if err != nil {
 		httpx.WriteError(w, r, err)

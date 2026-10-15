@@ -57,19 +57,19 @@ func (s *Service) Initiate(ctx context.Context, cmd InitiateCmd) (p *domain.Paym
 		return existing, existing != nil, err
 	}
 
-	ch, err := s.channels.Resolve(ctx, cmd.TenantID, cmd.ChannelID)
+	dest, err := s.channels.Resolve(ctx, cmd.TenantID, cmd.ChannelID)
 	if errors.Is(err, ErrChannelNotFound) {
 		return nil, false, errs.Invalid("channel_not_found", "channel_id does not refer to one of your channels")
 	}
 	if err != nil {
 		return nil, false, err
 	}
-	if !ch.Active {
+	if !dest.Active {
 		return nil, false, errs.Invalid("channel_inactive", "channel is deactivated")
 	}
 
 	p, err = domain.New(domain.NewParams{
-		ID: ids.New("pay"), TenantID: cmd.TenantID, ChannelID: ch.ID,
+		ID: ids.New("pay"), TenantID: cmd.TenantID, Destination: dest,
 		IdempotencyKey: cmd.IdempotencyKey, RequestHash: reqHash, CallbackToken: ids.Secret(32),
 		Amount: cmd.Amount, Phone: cmd.Phone, AccountReference: cmd.AccountReference,
 		Description: cmd.Description, Metadata: cmd.Metadata,
@@ -89,12 +89,14 @@ func (s *Service) Initiate(ctx context.Context, cmd InitiateCmd) (p *domain.Paym
 	// could prompt the customer without recording the CheckoutRequestID.
 	pushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 40*time.Second)
 	defer cancel()
-	ack, pushErr := s.gateway.STKPush(pushCtx, ch, STKPushRequest{
+	ack, pushErr := s.gateway.STKPush(pushCtx, STKPushRequest{
+		TransactionType: p.DestinationType.TransactionType(), PartyB: p.PartyB,
 		Amount: p.Amount, Phone: p.Phone, AccountReference: p.AccountReference,
 		Description: p.Description, CallbackURL: s.callbackURL(p.CallbackToken),
 	})
 
 	var rejected *RejectedError
+	var notSent *NotSentError
 	switch {
 	case pushErr == nil:
 		p, err = s.update(pushCtx, p, func(p *domain.Payment) []domain.Event {
@@ -104,6 +106,12 @@ func (s *Service) Initiate(ctx context.Context, cmd InitiateCmd) (p *domain.Paym
 	case errors.As(pushErr, &rejected):
 		p, err = s.update(pushCtx, p, func(p *domain.Payment) []domain.Event {
 			p.MarkInitiationFailed(rejected.Message, s.now())
+			return nil
+		})
+	case errors.As(pushErr, &notSent):
+		slog.ErrorContext(ctx, "stk push not sent", "payment_id", p.ID, "err", pushErr)
+		p, err = s.update(pushCtx, p, func(p *domain.Payment) []domain.Event {
+			p.MarkInitiationFailed("M-Pesa is temporarily unavailable; please retry", s.now())
 			return nil
 		})
 	default:
@@ -226,12 +234,8 @@ func (s *Service) Reconcile(ctx context.Context) (more bool, err error) {
 func (s *Service) reconcileOne(ctx context.Context, p *domain.Payment) error {
 	var res *domain.Result
 	if p.CanQueryStatus() {
-		ch, err := s.channels.Resolve(ctx, p.TenantID, p.ChannelID)
-		if err != nil {
-			return err
-		}
 		qctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		q, err := s.gateway.STKQuery(qctx, ch, p.CheckoutRequestID)
+		q, err := s.gateway.STKQuery(qctx, p.CheckoutRequestID)
 		cancel()
 		if err != nil {
 			slog.WarnContext(ctx, "stk query failed", "payment_id", p.ID, "err", err)
@@ -261,7 +265,8 @@ func events(e *domain.Event) []domain.Event {
 // View maps a payment to its public representation (REST and webhooks).
 func View(p *domain.Payment) contracts.PaymentView {
 	return contracts.PaymentView{
-		ID: p.ID, ChannelID: p.ChannelID, Status: string(p.Status), Amount: p.Amount, Currency: "KES",
+		ID: p.ID, ChannelID: p.ChannelID, DestinationType: string(p.DestinationType), PartyB: p.PartyB, BankName: p.BankName,
+		Status: string(p.Status), Amount: p.Amount, Currency: "KES",
 		Phone: p.Phone, AccountReference: p.AccountReference, Description: p.Description, Metadata: p.Metadata,
 		MerchantRequestID: p.MerchantRequestID, CheckoutRequestID: p.CheckoutRequestID,
 		MpesaReceiptNumber: p.MpesaReceipt, ResultCode: p.ResultCode, ResultDesc: p.ResultDesc,

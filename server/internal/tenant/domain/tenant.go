@@ -81,54 +81,44 @@ func ValidateWebhookURL(raw string) (string, error) {
 
 // ---------------------------------------------------------------- channels
 
+// ChannelType selects how the platform routes an STK push.
 type ChannelType string
 
 const (
-	ChannelPaybill ChannelType = "paybill" // CustomerPayBillOnline
-	ChannelTill    ChannelType = "till"    // CustomerBuyGoodsOnline
+	ChannelBank    ChannelType = "bank"    // bank's PayBill as PartyB, bank account number as AccountReference
+	ChannelPaybill ChannelType = "paybill" // any PayBill as PartyB, account number as AccountReference
+	ChannelTill    ChannelType = "till"    // Till as PartyB (Buy Goods)
 )
 
-type Environment string
-
-const (
-	EnvSandbox    Environment = "sandbox"
-	EnvProduction Environment = "production"
-)
-
-// Credentials are the tenant's Daraja app credentials for the channel.
-type Credentials struct {
-	ConsumerKey    string `json:"consumer_key"`
-	ConsumerSecret string `json:"consumer_secret"`
-	Passkey        string `json:"passkey"`
-}
-
-// Channel is one Daraja collection endpoint owned by a tenant: a PayBill,
-// or a Till under a Buy Goods store number.
+// Channel is a tenant's registered payment destination. STK pushes are
+// signed with the platform's Daraja app; the channel only decides where the
+// money is routed (PartyB and AccountReference).
 type Channel struct {
-	ID          string
-	TenantID    string
-	Name        string
-	Type        ChannelType
-	Environment Environment
-	// ShortCode is the BusinessShortCode used to sign STK requests: the
-	// PayBill number, or the store (head office) number for a Till.
-	ShortCode string
-	// TillNumber is PartyB for Till channels; empty for PayBill.
-	TillNumber  string
-	Credentials Credentials
-	Active      bool
-	CreatedAt   time.Time
+	ID       string
+	TenantID string
+	Name     string
+	Type     ChannelType
+	// PartyB is the receiving shortcode: the bank's PayBill, the PayBill, or the Till.
+	PartyB   string
+	BankName string // bank channels only
+	// AccountNumber is the bank account number (required for bank), or the
+	// default PayBill account (optional). Unused for Till.
+	AccountNumber string
+	Active        bool
+	CreatedAt     time.Time
 }
 
-var shortCodeRe = regexp.MustCompile(`^\d{5,7}$`)
+var (
+	shortCodeRe  = regexp.MustCompile(`^\d{5,7}$`)
+	accountRefRe = regexp.MustCompile(`^[A-Za-z0-9\-_/. ]{1,12}$`) // Daraja AccountReference limit
+)
 
 type NewChannelParams struct {
-	Name        string
-	Type        ChannelType
-	Environment Environment
-	ShortCode   string
-	TillNumber  string
-	Credentials Credentials
+	Name           string
+	Type           ChannelType
+	BankCode       string // bank: the bank's PayBill shortcode, from Banks
+	BusinessNumber string // paybill/till: the PayBill or Till number
+	AccountNumber  string
 }
 
 func NewChannel(id, tenantID string, p NewChannelParams, now time.Time) (*Channel, error) {
@@ -136,29 +126,33 @@ func NewChannel(id, tenantID string, p NewChannelParams, now time.Time) (*Channe
 	if err != nil {
 		return nil, err
 	}
+	c := &Channel{ID: id, TenantID: tenantID, Name: name, Type: p.Type, Active: true, CreatedAt: now}
+	account := strings.TrimSpace(p.AccountNumber)
+	if account != "" && !accountRefRe.MatchString(account) {
+		return nil, errs.Invalid("invalid_account_number", "account_number must be 1-12 characters: letters, digits, space and -_/.")
+	}
 	switch p.Type {
-	case ChannelPaybill:
-		p.TillNumber = ""
-	case ChannelTill:
-		if !shortCodeRe.MatchString(p.TillNumber) {
-			return nil, errs.Invalid("invalid_till_number", "till_number must be 5-7 digits")
+	case ChannelBank:
+		bank, ok := BankByCode(p.BankCode)
+		if !ok {
+			return nil, errs.Invalid("invalid_bank_code", "bank_code must be one of the codes from GET /v1/banks")
 		}
+		if account == "" {
+			return nil, errs.Invalid("account_number_required", "account_number (the bank account to credit) is required for bank channels")
+		}
+		c.PartyB, c.BankName, c.AccountNumber = bank.Code, bank.Name, account
+	case ChannelPaybill:
+		if !shortCodeRe.MatchString(p.BusinessNumber) {
+			return nil, errs.Invalid("invalid_business_number", "business_number must be a 5-7 digit PayBill number")
+		}
+		c.PartyB, c.AccountNumber = p.BusinessNumber, account
+	case ChannelTill:
+		if !shortCodeRe.MatchString(p.BusinessNumber) {
+			return nil, errs.Invalid("invalid_business_number", "business_number must be a 5-7 digit Till number")
+		}
+		c.PartyB = p.BusinessNumber
 	default:
-		return nil, errs.Invalid("invalid_channel_type", `type must be "paybill" or "till"`)
+		return nil, errs.Invalid("invalid_channel_type", `type must be "bank", "paybill" or "till"`)
 	}
-	if p.Environment != EnvSandbox && p.Environment != EnvProduction {
-		return nil, errs.Invalid("invalid_environment", `environment must be "sandbox" or "production"`)
-	}
-	if !shortCodeRe.MatchString(p.ShortCode) {
-		return nil, errs.Invalid("invalid_short_code", "short_code must be 5-7 digits")
-	}
-	c := p.Credentials
-	c.ConsumerKey, c.ConsumerSecret, c.Passkey = strings.TrimSpace(c.ConsumerKey), strings.TrimSpace(c.ConsumerSecret), strings.TrimSpace(c.Passkey)
-	if c.ConsumerKey == "" || c.ConsumerSecret == "" || c.Passkey == "" {
-		return nil, errs.Invalid("missing_credentials", "consumer_key, consumer_secret and passkey are required")
-	}
-	return &Channel{
-		ID: id, TenantID: tenantID, Name: name, Type: p.Type, Environment: p.Environment,
-		ShortCode: p.ShortCode, TillNumber: p.TillNumber, Credentials: c, Active: true, CreatedAt: now,
-	}, nil
+	return c, nil
 }

@@ -50,6 +50,9 @@ type PaymentEvent struct {
 type PaymentView struct {
 	ID                 string            `json:"id"`
 	ChannelID          string            `json:"channel_id"`
+	DestinationType    string            `json:"destination_type"`
+	PartyB             string            `json:"business_number"`
+	BankName           string            `json:"bank_name,omitempty"`
 	Status             string            `json:"status"`
 	Amount             int64             `json:"amount"`
 	Currency           string            `json:"currency"`

@@ -16,17 +16,16 @@ type Channels struct{ Tenants *tenantapp.Service }
 
 var _ app.ChannelProvider = Channels{}
 
-func (c Channels) Resolve(ctx context.Context, tenantID, channelID string) (domain.Channel, error) {
+func (c Channels) Resolve(ctx context.Context, tenantID, channelID string) (domain.Destination, error) {
 	ch, err := c.Tenants.GetChannel(ctx, tenantID, channelID)
 	if errs.IsKind(err, errs.KindNotFound) {
-		return domain.Channel{}, app.ErrChannelNotFound
+		return domain.Destination{}, app.ErrChannelNotFound
 	}
 	if err != nil {
-		return domain.Channel{}, err
+		return domain.Destination{}, err
 	}
-	return domain.Channel{
-		ID: ch.ID, TenantID: ch.TenantID, Type: string(ch.Type), Environment: string(ch.Environment),
-		ShortCode: ch.ShortCode, TillNumber: ch.TillNumber, Active: ch.Active,
-		ConsumerKey: ch.Credentials.ConsumerKey, ConsumerSecret: ch.Credentials.ConsumerSecret, Passkey: ch.Credentials.Passkey,
+	return domain.Destination{
+		ChannelID: ch.ID, Type: domain.DestinationType(ch.Type), PartyB: ch.PartyB,
+		BankName: ch.BankName, AccountNumber: ch.AccountNumber, Active: ch.Active,
 	}, nil
 }

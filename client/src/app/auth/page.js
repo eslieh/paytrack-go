@@ -2,37 +2,44 @@
 
 import Link from "next/link";
 import { Mail, Lock, ArrowRight, Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/context/AuthContext.jsx";
+
+// Only follow same-site relative redirects.
+function safeNext(next) {
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+}
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <Login />
+    </Suspense>
+  );
+}
+
+function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+  const next = safeNext(useSearchParams().get("next"));
+  const { login, token, loading } = useAuth();
 
-  const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+  useEffect(() => {
+    if (!loading && token) router.replace(next);
+  }, [loading, token, next, router]);
 
   async function onSubmit(e) {
     e.preventDefault();
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch(`${BASE_URL}/auth/dashboard/tenant/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `Login failed (${res.status})`);
-      }
-      const data = await res.json();
-      localStorage.setItem("paytrack_token", data.access_token);
-      localStorage.setItem("paytrack_user", JSON.stringify(data.user));
-      router.push("/dashboard");
+      await login(email.trim(), password);
+      router.push(next);
     } catch (err) {
       setError(err.message || "Login failed");
     } finally {
@@ -44,17 +51,15 @@ export default function LoginPage() {
     <div>
       <div className="card-header">
         <h1 className="card-title">Sign in to Paytrack</h1>
-        <p className="card-subtitle">Manage your finances, payments and invoices</p>
+        <p className="card-subtitle">Manage your M-Pesa channels, payments and webhooks</p>
       </div>
       <div className="card-body">
         <form className="stack" onSubmit={onSubmit}>
           <label className="stack" htmlFor="email">
             <span style={{fontSize: 13, color: "#555b73", fontWeight: 600}}>Email</span>
-            <div className="row" style={{gap: 8}}>
-              <div style={{position: "relative", width: "100%"}}>
-                <Mail size={18} color="#7b82a1" style={{position: "absolute", left: 12, top: 12}} />
-                <input id="email" type="email" className="input" placeholder="you@example.com" style={{paddingLeft: 38}} value={email} onChange={(e)=>setEmail(e.target.value)} required />
-              </div>
+            <div style={{position: "relative", width: "100%"}}>
+              <Mail size={18} color="#7b82a1" style={{position: "absolute", left: 12, top: 12}} />
+              <input id="email" type="email" autoComplete="email" className="input" placeholder="you@example.com" style={{paddingLeft: 38}} value={email} onChange={(e)=>setEmail(e.target.value)} required />
             </div>
           </label>
 
@@ -65,6 +70,7 @@ export default function LoginPage() {
               <input
                 id="password"
                 type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
                 className="input"
                 placeholder="••••••••"
                 style={{paddingLeft: 38, paddingRight: 38}}
@@ -72,23 +78,14 @@ export default function LoginPage() {
                 onChange={(e)=>setPassword(e.target.value)}
                 required
               />
-              {showPassword ? (
-                <EyeOff
-                  size={18}
-                  color="#7b82a1"
-                  style={{position: "absolute", right: 12, top: 12, cursor: "pointer"}}
-                  onClick={() => setShowPassword(false)}
-                  aria-label="Hide password"
-                />
-              ) : (
-                <Eye
-                  size={18}
-                  color="#7b82a1"
-                  style={{position: "absolute", right: 12, top: 12, cursor: "pointer"}}
-                  onClick={() => setShowPassword(true)}
-                  aria-label="Show password"
-                />
-              )}
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                style={{position: "absolute", right: 12, top: 12, background: "none", border: 0, padding: 0, cursor: "pointer"}}
+              >
+                {showPassword ? <EyeOff size={18} color="#7b82a1" /> : <Eye size={18} color="#7b82a1" />}
+              </button>
             </div>
           </label>
 
@@ -108,5 +105,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
-

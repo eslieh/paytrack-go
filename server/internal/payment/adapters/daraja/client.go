@@ -1,5 +1,8 @@
 // Package daraja implements the payment Gateway port against Safaricom's
-// Daraja API (Lipa Na M-Pesa Online / STK push).
+// Daraja API (Lipa Na M-Pesa Online / STK push). Every request is made with
+// the platform's own Daraja app: BusinessShortCode and Password come from
+// the platform credentials, while PartyB routes the money to the tenant's
+// destination.
 package daraja
 
 import (
@@ -26,15 +29,23 @@ var eat = time.FixedZone("EAT", 3*60*60)
 // Daraja error code returned by STK query while the customer has not acted yet.
 const errStillProcessing = "500.001.1001"
 
-type Client struct {
-	SandboxURL    string
-	ProductionURL string
-	HTTP          *http.Client
+// Credentials identify the platform's Daraja app.
+type Credentials struct {
+	BaseURL        string
+	ConsumerKey    string
+	ConsumerSecret string
+	ShortCode      string // BusinessShortCode that signs every STK request
+	Passkey        string
+}
 
-	sf     singleflight.Group
-	mu     sync.Mutex
-	tokens map[string]cachedToken
-	now    func() time.Time
+type Client struct {
+	creds Credentials
+	HTTP  *http.Client
+
+	sf    singleflight.Group
+	mu    sync.Mutex
+	token cachedToken
+	now   func() time.Time
 }
 
 type cachedToken struct {
@@ -44,50 +55,36 @@ type cachedToken struct {
 
 var _ app.Gateway = (*Client)(nil)
 
-func New(sandboxURL, productionURL string) *Client {
-	return &Client{
-		SandboxURL: sandboxURL, ProductionURL: productionURL,
-		HTTP:   &http.Client{Timeout: 30 * time.Second},
-		tokens: map[string]cachedToken{},
-		now:    time.Now,
-	}
-}
-
-func (c *Client) baseURL(ch domain.Channel) string {
-	if ch.Environment == "production" {
-		return c.ProductionURL
-	}
-	return c.SandboxURL
+func New(creds Credentials) *Client {
+	return &Client{creds: creds, HTTP: &http.Client{Timeout: 30 * time.Second}, now: time.Now}
 }
 
 // ---------------------------------------------------------------- OAuth
 
-// token returns a cached access token for the channel's app credentials,
-// fetching one at most once concurrently per credential set.
-func (c *Client) token(ctx context.Context, ch domain.Channel) (string, error) {
-	key := ch.Environment + "|" + ch.ConsumerKey
+// accessToken returns the cached OAuth token, fetching a new one at most
+// once concurrently.
+func (c *Client) accessToken(ctx context.Context) (string, error) {
 	c.mu.Lock()
-	t, ok := c.tokens[key]
+	t := c.token
 	c.mu.Unlock()
-	if ok && c.now().Before(t.expires) {
+	if t.value != "" && c.now().Before(t.expires) {
 		return t.value, nil
 	}
-	v, err, _ := c.sf.Do(key, func() (any, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL(ch)+"/oauth/v1/generate?grant_type=client_credentials", nil)
+	v, err, _ := c.sf.Do("token", func() (any, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.creds.BaseURL+"/oauth/v1/generate?grant_type=client_credentials", nil)
 		if err != nil {
 			return nil, err
 		}
-		req.SetBasicAuth(ch.ConsumerKey, ch.ConsumerSecret)
+		req.SetBasicAuth(c.creds.ConsumerKey, c.creds.ConsumerSecret)
 		resp, err := c.HTTP.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("daraja oauth: %w", err)
 		}
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-		if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnauthorized {
-			return nil, &app.RejectedError{Code: "invalid_credentials", Message: "Daraja rejected the channel's consumer key/secret"}
-		}
 		if resp.StatusCode != http.StatusOK {
+			// Misconfigured platform credentials are our fault, not the
+			// tenant's request: report as an error, not a rejection.
 			return nil, fmt.Errorf("daraja oauth: status %d: %s", resp.StatusCode, body)
 		}
 		var out struct {
@@ -103,7 +100,7 @@ func (c *Client) token(ctx context.Context, ch domain.Channel) (string, error) {
 		}
 		// Refresh a minute early so a token never expires mid-request.
 		c.mu.Lock()
-		c.tokens[key] = cachedToken{out.AccessToken, c.now().Add(time.Duration(secs-60) * time.Second)}
+		c.token = cachedToken{out.AccessToken, c.now().Add(time.Duration(secs-60) * time.Second)}
 		c.mu.Unlock()
 		return out.AccessToken, nil
 	})
@@ -113,9 +110,9 @@ func (c *Client) token(ctx context.Context, ch domain.Channel) (string, error) {
 	return v.(string), nil
 }
 
-func (c *Client) invalidate(ch domain.Channel) {
+func (c *Client) invalidate() {
 	c.mu.Lock()
-	delete(c.tokens, ch.Environment+"|"+ch.ConsumerKey)
+	c.token = cachedToken{}
 	c.mu.Unlock()
 }
 
@@ -129,17 +126,17 @@ type errorBody struct {
 
 // post sends an authenticated JSON request, retrying once with a fresh
 // token if Daraja reports the token invalid.
-func (c *Client) post(ctx context.Context, ch domain.Channel, path string, in any) (int, []byte, error) {
+func (c *Client) post(ctx context.Context, path string, in any) (int, []byte, error) {
 	payload, err := json.Marshal(in)
 	if err != nil {
 		return 0, nil, err
 	}
 	for attempt := 0; ; attempt++ {
-		tok, err := c.token(ctx, ch)
+		tok, err := c.accessToken(ctx)
 		if err != nil {
-			return 0, nil, err
+			return 0, nil, &app.NotSentError{Err: err}
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL(ch)+path, bytes.NewReader(payload))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.creds.BaseURL+path, bytes.NewReader(payload))
 		if err != nil {
 			return 0, nil, err
 		}
@@ -152,31 +149,27 @@ func (c *Client) post(ctx context.Context, ch domain.Channel, path string, in an
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
 		resp.Body.Close()
 		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
-			c.invalidate(ch)
+			c.invalidate()
 			continue
 		}
 		return resp.StatusCode, body, nil
 	}
 }
 
-func password(ch domain.Channel, ts string) string {
-	return base64.StdEncoding.EncodeToString([]byte(ch.ShortCode + ch.Passkey + ts))
+func (c *Client) password(ts string) string {
+	return base64.StdEncoding.EncodeToString([]byte(c.creds.ShortCode + c.creds.Passkey + ts))
 }
 
-func (c *Client) STKPush(ctx context.Context, ch domain.Channel, r app.STKPushRequest) (app.STKPushAck, error) {
+func (c *Client) STKPush(ctx context.Context, r app.STKPushRequest) (app.STKPushAck, error) {
 	ts := c.now().In(eat).Format("20060102150405")
-	txType, partyB := "CustomerPayBillOnline", ch.ShortCode
-	if ch.Type == "till" {
-		txType, partyB = "CustomerBuyGoodsOnline", ch.TillNumber
-	}
-	status, body, err := c.post(ctx, ch, "/mpesa/stkpush/v1/processrequest", map[string]string{
-		"BusinessShortCode": ch.ShortCode,
-		"Password":          password(ch, ts),
+	status, body, err := c.post(ctx, "/mpesa/stkpush/v1/processrequest", map[string]string{
+		"BusinessShortCode": c.creds.ShortCode,
+		"Password":          c.password(ts),
 		"Timestamp":         ts,
-		"TransactionType":   txType,
+		"TransactionType":   r.TransactionType,
 		"Amount":            strconv.FormatInt(r.Amount, 10),
 		"PartyA":            r.Phone,
-		"PartyB":            partyB,
+		"PartyB":            r.PartyB,
 		"PhoneNumber":       r.Phone,
 		"CallBackURL":       r.CallbackURL,
 		"AccountReference":  r.AccountReference,
@@ -208,11 +201,11 @@ func (c *Client) STKPush(ctx context.Context, ch domain.Channel, r app.STKPushRe
 	return app.STKPushAck{}, fmt.Errorf("daraja stk push: status %d: %s", status, body)
 }
 
-func (c *Client) STKQuery(ctx context.Context, ch domain.Channel, checkoutRequestID string) (app.STKQueryResult, error) {
+func (c *Client) STKQuery(ctx context.Context, checkoutRequestID string) (app.STKQueryResult, error) {
 	ts := c.now().In(eat).Format("20060102150405")
-	status, body, err := c.post(ctx, ch, "/mpesa/stkpushquery/v1/query", map[string]string{
-		"BusinessShortCode": ch.ShortCode,
-		"Password":          password(ch, ts),
+	status, body, err := c.post(ctx, "/mpesa/stkpushquery/v1/query", map[string]string{
+		"BusinessShortCode": c.creds.ShortCode,
+		"Password":          c.password(ts),
 		"Timestamp":         ts,
 		"CheckoutRequestID": checkoutRequestID,
 	})

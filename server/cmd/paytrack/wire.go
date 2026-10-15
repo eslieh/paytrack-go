@@ -63,7 +63,10 @@ func build(cfg *config.Config, pool *pgxpool.Pool) (*modules, error) {
 		return nil, err
 	}
 	m.payments = paymentapp.NewService(paymentpg.New(pool), paymenttenant.Channels{Tenants: m.tenants},
-		daraja.New(cfg.DarajaSandboxURL, cfg.DarajaProductionURL), cfg.PublicCallbackBaseURL)
+		daraja.New(daraja.Credentials{
+			BaseURL: cfg.Mpesa.BaseURL, ConsumerKey: cfg.Mpesa.ConsumerKey, ConsumerSecret: cfg.Mpesa.ConsumerSecret,
+			ShortCode: cfg.Mpesa.ShortCode, Passkey: cfg.Mpesa.Passkey,
+		}), cfg.PublicCallbackBaseURL)
 	m.notify = notifyapp.NewService(notifypg.New(pool), notifytenant.Targets{Tenants: m.tenants}, webhook.New(cfg.WebhookAllowPrivate))
 	return m, nil
 }

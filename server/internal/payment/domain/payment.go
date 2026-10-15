@@ -50,25 +50,45 @@ type Event struct {
 	OccurredAt time.Time
 }
 
-// Channel is the payment module's view of a tenant channel, provided by the
-// ChannelProvider port.
-type Channel struct {
-	ID             string
-	TenantID       string
-	Type           string // "paybill" | "till"
-	Environment    string // "sandbox" | "production"
-	ShortCode      string
-	TillNumber     string
-	ConsumerKey    string
-	ConsumerSecret string
-	Passkey        string
-	Active         bool
+// DestinationType mirrors the tenant channel types.
+type DestinationType string
+
+const (
+	DestinationBank    DestinationType = "bank"
+	DestinationPaybill DestinationType = "paybill"
+	DestinationTill    DestinationType = "till"
+)
+
+// Destination is where a payment's money is routed: the payment module's
+// view of a tenant channel, provided by the ChannelProvider port. Every STK
+// push is signed with the platform's Daraja app; only PartyB and
+// AccountReference vary per destination.
+type Destination struct {
+	ChannelID     string
+	Type          DestinationType
+	PartyB        string
+	BankName      string
+	AccountNumber string // bank account (bank) or default account (paybill)
+	Active        bool
+}
+
+// TransactionType is the Daraja STK TransactionType for the destination.
+func (d DestinationType) TransactionType() string {
+	if d == DestinationTill {
+		return "CustomerBuyGoodsOnline"
+	}
+	return "CustomerPayBillOnline"
 }
 
 type Payment struct {
-	ID               string
-	TenantID         string
-	ChannelID        string
+	ID        string
+	TenantID  string
+	ChannelID string
+	// Snapshot of the routing at initiation; later channel edits don't
+	// change where an existing payment went.
+	DestinationType  DestinationType
+	PartyB           string
+	BankName         string
 	IdempotencyKey   string
 	RequestHash      string
 	Status           Status
@@ -100,7 +120,8 @@ type Payment struct {
 }
 
 type NewParams struct {
-	ID, TenantID, ChannelID     string
+	ID, TenantID                string
+	Destination                 Destination
 	IdempotencyKey, RequestHash string
 	CallbackToken               string
 	Amount                      int64
@@ -140,9 +161,9 @@ func New(p NewParams, now time.Time) (*Payment, error) {
 	if err != nil {
 		return nil, err
 	}
-	ref := strings.TrimSpace(p.AccountReference)
-	if !accountRefRe.MatchString(ref) {
-		return nil, errs.Invalid("invalid_account_reference", "account_reference must be 1-12 characters: letters, digits, space and -_/.")
+	ref, err := accountReference(p.Destination, strings.TrimSpace(p.AccountReference))
+	if err != nil {
+		return nil, err
 	}
 	desc := strings.TrimSpace(p.Description)
 	if desc == "" {
@@ -161,12 +182,45 @@ func New(p NewParams, now time.Time) (*Payment, error) {
 	}
 	next := now.Add(createdCheckDelay)
 	return &Payment{
-		ID: p.ID, TenantID: p.TenantID, ChannelID: p.ChannelID,
+		ID: p.ID, TenantID: p.TenantID, ChannelID: p.Destination.ChannelID,
+		DestinationType: p.Destination.Type, PartyB: p.Destination.PartyB, BankName: p.Destination.BankName,
 		IdempotencyKey: p.IdempotencyKey, RequestHash: p.RequestHash,
 		Status: StatusCreated, Amount: p.Amount, Phone: phone, AccountReference: ref,
 		Description: desc, Metadata: p.Metadata, CallbackToken: p.CallbackToken,
 		NextCheckAt: &next, Version: 1, CreatedAt: now, UpdatedAt: now,
 	}, nil
+}
+
+// accountReference resolves the STK AccountReference:
+//   - bank: always the channel's bank account number; a different value is
+//     rejected so a payment can't be redirected to another account.
+//   - paybill: the requested value, else the channel default; one is required.
+//   - till: the requested value, else "Till Payment" (Buy Goods ignores it).
+func accountReference(d Destination, requested string) (string, error) {
+	switch d.Type {
+	case DestinationBank:
+		if requested != "" && requested != d.AccountNumber {
+			return "", errs.Invalid("account_reference_mismatch", "bank channels always credit the channel's account_number; omit account_reference")
+		}
+		requested = d.AccountNumber
+	case DestinationPaybill:
+		if requested == "" {
+			requested = d.AccountNumber
+		}
+		if requested == "" {
+			return "", errs.Invalid("account_reference_required", "account_reference is required for this PayBill channel")
+		}
+	case DestinationTill:
+		if requested == "" {
+			requested = "Till Payment"
+		}
+	default:
+		return "", errs.Invalid("invalid_destination", "unknown channel type")
+	}
+	if !accountRefRe.MatchString(requested) {
+		return "", errs.Invalid("invalid_account_reference", "account_reference must be 1-12 characters: letters, digits, space and -_/.")
+	}
+	return requested, nil
 }
 
 // ---------------------------------------------------------------- transitions

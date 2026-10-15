@@ -1,10 +1,9 @@
-// Package postgres implements the tenant Repository on Postgres. Daraja
-// credentials and webhook secrets are encrypted before they are written.
+// Package postgres implements the tenant Repository on Postgres. Webhook
+// signing secrets are encrypted before they are written.
 package postgres
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -176,37 +175,21 @@ func (r *Repo) TouchAPIKey(ctx context.Context, id string, at time.Time) error {
 
 // ---------------------------------------------------------------- channels
 
-const chanCols = `id, tenant_id, name, type, environment, short_code, till_number, credentials_enc, active, created_at`
+const chanCols = `id, tenant_id, name, type, party_b, bank_name, account_number, active, created_at`
 
-func (r *Repo) scanChannel(row pgx.Row) (*domain.Channel, error) {
+func scanChannel(row pgx.Row) (*domain.Channel, error) {
 	var c domain.Channel
-	var enc []byte
-	if err := row.Scan(&c.ID, &c.TenantID, &c.Name, &c.Type, &c.Environment, &c.ShortCode, &c.TillNumber,
-		&enc, &c.Active, &c.CreatedAt); err != nil {
+	if err := row.Scan(&c.ID, &c.TenantID, &c.Name, &c.Type, &c.PartyB, &c.BankName, &c.AccountNumber,
+		&c.Active, &c.CreatedAt); err != nil {
 		return nil, notFound(err)
-	}
-	plain, err := r.cipher.Decrypt(enc)
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(plain, &c.Credentials); err != nil {
-		return nil, err
 	}
 	return &c, nil
 }
 
 func (r *Repo) CreateChannel(ctx context.Context, c *domain.Channel) error {
-	plain, err := json.Marshal(c.Credentials)
-	if err != nil {
-		return err
-	}
-	enc, err := r.cipher.Encrypt(plain)
-	if err != nil {
-		return err
-	}
-	_, err = r.pool.Exec(ctx, `INSERT INTO tenant.channels (`+chanCols+`, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`,
-		c.ID, c.TenantID, c.Name, c.Type, c.Environment, c.ShortCode, c.TillNumber, enc, c.Active, c.CreatedAt)
+	_, err := r.pool.Exec(ctx, `INSERT INTO tenant.channels (`+chanCols+`, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
+		c.ID, c.TenantID, c.Name, c.Type, c.PartyB, c.BankName, c.AccountNumber, c.Active, c.CreatedAt)
 	return err
 }
 
@@ -218,7 +201,7 @@ func (r *Repo) ListChannels(ctx context.Context, tenantID string) ([]*domain.Cha
 	defer rows.Close()
 	var out []*domain.Channel
 	for rows.Next() {
-		c, err := r.scanChannel(rows)
+		c, err := scanChannel(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -228,7 +211,7 @@ func (r *Repo) ListChannels(ctx context.Context, tenantID string) ([]*domain.Cha
 }
 
 func (r *Repo) GetChannel(ctx context.Context, tenantID, id string) (*domain.Channel, error) {
-	return r.scanChannel(r.pool.QueryRow(ctx, `SELECT `+chanCols+` FROM tenant.channels WHERE tenant_id = $1 AND id = $2`, tenantID, id))
+	return scanChannel(r.pool.QueryRow(ctx, `SELECT `+chanCols+` FROM tenant.channels WHERE tenant_id = $1 AND id = $2`, tenantID, id))
 }
 
 func (r *Repo) DeactivateChannel(ctx context.Context, tenantID, id string) error {

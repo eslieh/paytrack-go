@@ -14,7 +14,7 @@ var (
 )
 
 // Repository is the tenant module's persistence port. Implementations
-// encrypt Credentials and WebhookSecret at rest.
+// encrypt WebhookSecret at rest.
 type Repository interface {
 	CreateTenantWithOwner(ctx context.Context, t *domain.Tenant, u *domain.User) error
 	GetTenant(ctx context.Context, id string) (*domain.Tenant, error)

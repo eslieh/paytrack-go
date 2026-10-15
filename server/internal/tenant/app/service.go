@@ -190,12 +190,12 @@ func (s *Service) RegisterChannel(ctx context.Context, tenantID string, p domain
 	return c, nil
 }
 
+func (s *Service) Banks() []domain.Bank { return domain.Banks }
+
 func (s *Service) ListChannels(ctx context.Context, tenantID string) ([]*domain.Channel, error) {
 	return s.repo.ListChannels(ctx, tenantID)
 }
 
-// GetChannel returns a tenant's channel including decrypted credentials.
-// Inbound adapters must not expose Credentials.
 func (s *Service) GetChannel(ctx context.Context, tenantID, id string) (*domain.Channel, error) {
 	c, err := s.repo.GetChannel(ctx, tenantID, id)
 	if errors.Is(err, ErrNotFound) {

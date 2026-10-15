@@ -1,6 +1,6 @@
 # PayTrack architecture
 
-PayTrack is a multi-tenant M-Pesa collections router. Tenants register their own Daraja channels (PayBill or Till). They then ask PayTrack to send STK push prompts to customers, and PayTrack tells their backend the outcome through a signed webhook.
+PayTrack is a multi-tenant M-Pesa collections router. Tenants register **payment destinations** (a bank account through the bank's PayBill, any PayBill, or a Till). PayTrack sends STK pushes to customers **using the platform's own Daraja app** and routes each payment to the tenant's destination through `PartyB` and `AccountReference`. Money goes straight to the destination and never into a PayTrack account. PayTrack then tells the tenant's backend the outcome through a signed webhook.
 
 v1 scope: **C2B collections via STK push** (Lipa Na M-Pesa Online). Backend only. A separate frontend (dashboard) uses the same REST API; see [`api/openapi.yaml`](api/openapi.yaml).
 
@@ -10,7 +10,7 @@ This is one Go module and one container image. It has four modules, each a hexag
 
 | Module | Owns | Inbound adapters | Outbound adapters |
 |---|---|---|---|
-| `tenant` | tenants, users, API keys, channels (Daraja creds, encrypted), webhook config | HTTP | Postgres, bcrypt/JWT |
+| `tenant` | tenants, users, API keys, channels (routing destinations), bank catalog, webhook config | HTTP | Postgres, bcrypt/JWT |
 | `payment` | Payment aggregate + state machine, reconciliation | HTTP, Kafka (`mpesa.stk-callbacks.v1`) | Postgres + outbox, Daraja, tenant (in-process) |
 | `callback` | raw Daraja callback inbox | HTTP (public) | Postgres + outbox |
 | `notify` | webhook deliveries, retries | Kafka (`payment.events.v1`), HTTP | Postgres, HTTP sender, tenant (in-process) |
@@ -51,9 +51,12 @@ One binary, deployed as separate containers per role so each scales and fails in
 Tenant backend / dashboard
    │ POST /v1/payments  (Idempotency-Key)
    ▼
-[api] payment.Initiate ── resolve channel (tenant port) ── insert payment (created)
-   │                                                       callback_token = random 256-bit
-   ├──► Daraja STK push  (CallBackURL = …/callbacks/mpesa/stk/{callback_token})
+[api] payment.Initiate ── resolve channel → destination (tenant port) ── insert payment (created)
+   │                        routing snapshot + callback_token = random 256-bit
+   ├──► Daraja STK push, signed with the platform app
+   │      BusinessShortCode/Password = platform shortcode + passkey
+   │      PartyB/AccountReference    = tenant destination
+   │      CallBackURL                = …/callbacks/mpesa/stk/{callback_token}
    │       ok        → pending (CheckoutRequestID stored)
    │       rejected  → failed (returned synchronously)
    │       timeout   → stays created (settled by callback or reconciler)
@@ -88,13 +91,26 @@ created ──push ok──────► pending ──result 0─────
 
 `succeeded`, `failed` and `cancelled` are final. `expired` can still move to `succeeded`, so money that actually arrived is never reported as lost. Every transition except initiation failure emits a webhook event: `payment.succeeded`, `payment.failed`, `payment.cancelled`, `payment.expired`.
 
+### Routing (platform-initiated)
+
+Every request uses the platform Daraja app from `MPESA_*`. The channel decides only where the money goes:
+
+| Channel type | TransactionType | PartyB | AccountReference |
+|---|---|---|---|
+| `bank` | CustomerPayBillOnline | bank's PayBill (from `GET /v1/banks`) | the channel's bank account number. It is fixed, and a payment can't override it, so money can't be redirected to another account |
+| `paybill` | CustomerPayBillOnline | PayBill number | the payment's `account_reference`, else the channel default |
+| `till` | CustomerBuyGoodsOnline | Till number | the payment's value, else "Till Payment" |
+
+Each payment stores a snapshot of `destination_type`, `PartyB` and `bank_name`, so later channel edits don't rewrite history.
+
 ### Daraja details that shape the design
 
 - **Callback routing by our own secret.** Daraja does not sign callbacks. Each payment gets a random 256-bit `callback_token` embedded in the CallBackURL. Callbacks are matched by token, and the CheckoutRequestID is then checked against it. Forged callbacks would have to guess the token. In production, also set `CALLBACK_ALLOWED_CIDRS` to Safaricom's published IPs.
 - **Callbacks get lost or duplicated.** The reconciler (in the worker) runs STK status queries on overdue pending payments with backoff: 45s, 1m, 2m, 5m, 10m and 20m. The state machine ignores duplicates.
 - **Ambiguous push failures.** A timeout or 5xx from Daraja does not prove the prompt wasn't sent. The payment stays `created`. If a callback arrives it is still matched by token; otherwise the payment expires.
-- **Token cache.** OAuth tokens are cached per (environment, consumer key) in each process and refreshed a minute early. `singleflight` stops a burst of requests from fetching many tokens, and a 401 invalidates the cache and retries once.
-- **Credentials at rest.** Consumer key, consumer secret and passkey, plus webhook signing secrets, are AES-256-GCM encrypted with `ENCRYPTION_KEY`. They are never returned by the API.
+- **Token cache.** The platform app's OAuth token is cached in each process and refreshed a minute early. `singleflight` stops a burst of requests from fetching many tokens, and a 401 invalidates the cache and retries once.
+- **Not sent vs. ambiguous.** If the OAuth token can't be obtained, the push was never sent, so the payment fails immediately with "M-Pesa is temporarily unavailable" and the tenant can retry.
+- **Secrets.** The platform Daraja credentials live only in env (use a secrets manager in production). Webhook signing secrets are AES-256-GCM encrypted at rest with `ENCRYPTION_KEY`.
 
 ## Reliability patterns
 
@@ -149,6 +165,7 @@ Target layout, with every role running as a container on at least two instances 
 
 - Per-tenant rate limiting (ALB/WAF or Redis token bucket) and per-channel circuit breaker for Daraja.
 - Shared token cache (Redis) once API/worker replica count makes per-process OAuth calls noticeable.
+- Bank catalog in the database (admin-managed) instead of code; verify each bank's PayBill before production.
 - OpenTelemetry tracing and metrics: stuck-pending count, callback rate, DLQ depth, webhook failure rate.
 - Team members and roles per tenant; password reset; refresh tokens.
 - C2B register-URL flow (customers paying the PayBill directly without an STK prompt) as a new inbound adapter.

@@ -41,12 +41,16 @@ type ListFilter struct {
 	Limit     int
 }
 
-// ChannelProvider resolves a tenant's channel, credentials included.
+// ChannelProvider resolves a tenant's channel to a routing destination.
 type ChannelProvider interface {
-	Resolve(ctx context.Context, tenantID, channelID string) (domain.Channel, error)
+	Resolve(ctx context.Context, tenantID, channelID string) (domain.Destination, error)
 }
 
+// STKPushRequest is signed by the gateway with the platform's Daraja app;
+// TransactionType and PartyB route the money to the tenant's destination.
 type STKPushRequest struct {
+	TransactionType  string
+	PartyB           string
 	Amount           int64
 	Phone            string
 	AccountReference string
@@ -65,10 +69,10 @@ type STKQueryResult struct {
 	Result  domain.Result
 }
 
-// Gateway is the outbound port to M-Pesa.
+// Gateway is the outbound port to M-Pesa, bound to the platform's Daraja app.
 type Gateway interface {
-	STKPush(ctx context.Context, ch domain.Channel, req STKPushRequest) (STKPushAck, error)
-	STKQuery(ctx context.Context, ch domain.Channel, checkoutRequestID string) (STKQueryResult, error)
+	STKPush(ctx context.Context, req STKPushRequest) (STKPushAck, error)
+	STKQuery(ctx context.Context, checkoutRequestID string) (STKQueryResult, error)
 }
 
 // RejectedError is returned by Gateway.STKPush when Daraja definitively
@@ -78,6 +82,14 @@ type RejectedError struct {
 	Code    string
 	Message string
 }
+
+// NotSentError is returned when the request never reached Daraja's STK
+// endpoint (e.g. the platform's OAuth token could not be obtained), so the
+// customer was certainly not prompted.
+type NotSentError struct{ Err error }
+
+func (e *NotSentError) Error() string { return "stk push not sent: " + e.Err.Error() }
+func (e *NotSentError) Unwrap() error { return e.Err }
 
 func (e *RejectedError) Error() string {
 	return fmt.Sprintf("daraja rejected request: %s %s", e.Code, e.Message)

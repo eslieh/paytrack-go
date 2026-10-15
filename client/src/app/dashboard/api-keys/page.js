@@ -1,147 +1,168 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Tabs from "@/components/Tabs.jsx";
+import { Plus } from "lucide-react";
 import styles from "@/app/dashboard/styles.module.css";
-import { apiFetch } from "@/lib/api";
+import { api, getBaseUrl } from "@/lib/api";
+import { fmtDate } from "@/lib/format";
+import { CopyButton, ErrorText, Field, Modal, StatusBadge } from "@/components/ui.jsx";
 
 export default function ApiKeysPage() {
-  const [keyData, setKeyData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [keys, setKeys] = useState(null);
+  const [error, setError] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [created, setCreated] = useState(null);
+  const [revoking, setRevoking] = useState(null);
+  const [busy, setBusy] = useState(false);
 
-  async function fetchKey() {
-    setError("");
-    setLoading(true);
+  async function load() {
+    setError(null);
     try {
-      const res = await apiFetch(`/tenants/dashboard/key`, { method: "GET" });
-      setKeyData(res);
+      setKeys((await api.apiKeys.list()).data);
     } catch (e) {
-      setKeyData(null);
-      setError(e.message || "Failed to fetch key");
-    } finally {
-      setLoading(false);
+      setError(e);
     }
   }
 
-  useEffect(() => { fetchKey(); }, []);
+  useEffect(() => { load(); }, []);
 
-  async function generate() {
-    setSaving(true); setError("");
+  async function revoke(k) {
+    setBusy(true);
     try {
-      const res = await apiFetch(`/tenants/dashboard/key`, { method: "POST", body: JSON.stringify({ action: "generate" }) });
-      setKeyData(res);
-    } catch (e) { setError(e.message || "Failed to generate key"); }
-    finally { setSaving(false); }
-  }
-
-  async function regenerate() {
-    setSaving(true); setError("");
-    try {
-      const res = await apiFetch(`/tenants/dashboard/key`, { method: "PATCH", body: JSON.stringify({ action: "regenerate" }) });
-      setKeyData(res);
-    } catch (e) { setError(e.message || "Failed to regenerate key"); }
-    finally { setSaving(false); }
-  }
-
-  async function revoke() {
-    setSaving(true); setError("");
-    try {
-      await apiFetch(`/tenants/dashboard/key`, { method: "DELETE" });
-      setKeyData(null);
-    } catch (e) { setError(e.message || "Failed to delete key"); }
-    finally { setSaving(false); }
-  }
-
-  function maskKey(value) {
-    if (!value) return "";
-    if (value.length <= 8) return "*".repeat(value.length);
-    return `${value.slice(0,4)}${"*".repeat(value.length - 8)}${value.slice(-4)}`;
-  }
-
-  async function copyKey() {
-    if (!keyData?.key) return;
-    try {
-      await navigator.clipboard.writeText(keyData.key);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } catch {}
+      await api.apiKeys.revoke(k.id);
+      await load();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+      setRevoking(null);
+    }
   }
 
   return (
-    <div className={styles.shell}>
-      <Tabs
-        activeHref="/dashboard/api-keys"
-        items={[
-          { label: "Home", href: "/dashboard" },
-          { label: "Wallet", href: "/dashboard/wallet" },
-          { label: "API Keys", href: "/dashboard/api-keys" },
-        ]}
-        brand="Paytrack"
-      />
-      <main className={styles.main}>
-        <section className={styles.card}>
-          <div className={styles.rowBetween}>
-            <div className={styles.h2}>API Keys</div>
-            <div style={{display: "flex", gap: 8}}>
-              <button className="btn btn-ghost" onClick={fetchKey} disabled={loading || saving}>Refresh</button>
-              {keyData ? (
-                <>
-                  <button className="btn btn-ghost" onClick={regenerate} disabled={saving}>{saving ? "Working..." : "Regenerate"}</button>
-                  <button className="btn btn-ghost" onClick={revoke} disabled={saving}>Delete</button>
-                </>
-              ) : (
-                <button className="btn btn-primary" onClick={generate} disabled={saving}>{saving ? "Working..." : "Generate key"}</button>
-              )}
+    <>
+      <section className={styles.card}>
+        <div className={styles.rowBetween}>
+          <div>
+            <div className={styles.h2}>API keys</div>
+            <div className={styles.muted} style={{ fontSize: 13 }}>
+              Use a key from your backend as <code>Authorization: Bearer ptk_…</code>. Keep keys server-side.
             </div>
           </div>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}><Plus size={16} /> Create key</button>
+        </div>
 
-          {loading && (<>
-            <div className={styles.skeletonLine} />
-            <div className={styles.skeletonLine} />
-          </>)}
-
-          {!loading && keyData && (
-            <div style={{display: "grid", gap: 12, marginTop: 8}}>
-              <div>
-                <div className={styles.muted} style={{fontSize: 12}}>Key</div>
-                <div className={styles.mono}>{maskKey(keyData.key)}</div>
-                <div style={{marginTop: 6}}>
-                  <button className="btn btn-primary" onClick={copyKey} disabled={!keyData?.key}>
-                    {copied ? "Copied" : "Copy key"}
-                  </button>
+        <div className={styles.table} style={{ "--cols": "1.4fr 1.2fr 1fr 1.2fr 1.2fr 0.8fr" }}>
+          <div className={styles.thead}>
+            <div>Name</div><div>Key</div><div>Status</div><div>Created</div><div>Last used</div><div />
+          </div>
+          <div className={styles.tbody}>
+            {!keys && !error && <div className={styles.empty}>Loading...</div>}
+            {keys?.length === 0 && <div className={styles.empty}>No API keys yet.</div>}
+            {keys?.map((k) => (
+              <div key={k.id} className={styles.trow} style={{ opacity: k.revoked_at ? 0.6 : 1 }}>
+                <div className={styles.cellTitle}>{k.name}</div>
+                <div className={styles.mono} style={{ letterSpacing: 0, fontSize: 13 }}>{k.prefix}…</div>
+                <div>
+                  {k.revoked_at
+                    ? <StatusBadge status="revoked" tone="danger" />
+                    : <StatusBadge status="active" tone="success" />}
+                </div>
+                <div className={styles.cellSub}>{fmtDate(k.created_at)}</div>
+                <div className={styles.cellSub}>{k.last_used_at ? fmtDate(k.last_used_at) : "Never"}</div>
+                <div style={{ textAlign: "right" }}>
+                  {!k.revoked_at && (
+                    <button className="btn btn-ghost" style={{ padding: "6px 10px", color: "#b42318" }} onClick={() => setRevoking(k)}>Revoke</button>
+                  )}
                 </div>
               </div>
-              <div style={{display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8}}>
-                <div>
-                  <div className={styles.muted} style={{fontSize: 12}}>Created</div>
-                  <div>{new Date(keyData.created_at).toLocaleString()}</div>
-                </div>
-                <div>
-                  <div className={styles.muted} style={{fontSize: 12}}>Revoked</div>
-                  <div>{keyData.revoked_at ? new Date(keyData.revoked_at).toLocaleString() : "—"}</div>
-                </div>
-                <div>
-                  <div className={styles.muted} style={{fontSize: 12}}>Status</div>
-                  <div><span className={styles.badgeSuccess}>{keyData.revoked_at ? "revoked" : "active"}</span></div>
-                </div>
-              </div>
-            </div>
-          )}
+            ))}
+          </div>
+        </div>
+        <ErrorText error={error} />
+      </section>
 
-          {!loading && !keyData && (
-            <div style={{marginTop: 8}}>
-              <div className={styles.muted}>No key found.</div>
-            </div>
-          )}
+      <section className={styles.card}>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>Quick start</div>
+        <pre className={styles.codeBox}>{`curl -X POST ${getBaseUrl()}/v1/payments \\
+  -H "Authorization: Bearer $PAYTRACK_API_KEY" \\
+  -H "Idempotency-Key: order-123" \\
+  -H "Content-Type: application/json" \\
+  -d '{"channel_id":"chn_…","amount":10,"phone":"0712345678","account_reference":"ORDER123"}'`}</pre>
+      </section>
 
-          {error && (<div style={{color: "#b42318", fontSize: 13, marginTop: 8}}>{error}</div>)}
-        </section>
-      </main>
-    </div>
+      {creating && (
+        <CreateKeyModal
+          onClose={() => setCreating(false)}
+          onCreated={(k) => {
+            setCreating(false);
+            setCreated(k);
+            setKeys((prev) => [k, ...(prev || [])]);
+          }}
+        />
+      )}
+
+      {created && (
+        <Modal title="Save your API key" onClose={() => setCreated(null)} footer={<button className="btn btn-primary" onClick={() => setCreated(null)}>I&apos;ve saved it</button>}>
+          <div className={styles.notice} style={{ marginBottom: 12 }}>
+            This is the only time the full key is shown. Store it somewhere safe, like your backend&apos;s secret manager.
+          </div>
+          <div className={styles.secretRow}>
+            <span className={styles.secretValue}>{created.key}</span>
+            <CopyButton text={created.key} />
+          </div>
+        </Modal>
+      )}
+
+      {revoking && (
+        <Modal
+          title={`Revoke "${revoking.name}"?`}
+          onClose={() => setRevoking(null)}
+          footer={
+            <>
+              <button className="btn btn-ghost" onClick={() => setRevoking(null)} disabled={busy}>Cancel</button>
+              <button className="btn btn-primary" style={{ background: "#b42318", boxShadow: "none" }} onClick={() => revoke(revoking)} disabled={busy}>
+                {busy ? "Revoking..." : "Revoke key"}
+              </button>
+            </>
+          }
+        >
+          <div className={styles.muted}>Requests using <span className={styles.mono} style={{ letterSpacing: 0 }}>{revoking.prefix}…</span> will be rejected immediately. This can&apos;t be undone.</div>
+        </Modal>
+      )}
+    </>
   );
 }
 
+function CreateKeyModal({ onClose, onCreated }) {
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
 
+  async function submit(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      onCreated(await api.apiKeys.create(name.trim()));
+    } catch (err) {
+      setError(err);
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal title="Create API key" onClose={onClose}>
+      <form onSubmit={submit}>
+        <Field label="Name" hint="Something that tells you where the key is used, e.g. “production backend”.">
+          <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} required />
+        </Field>
+        <ErrorText error={error} />
+        <div className={styles.modalFooter}>
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Creating..." : "Create key"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}

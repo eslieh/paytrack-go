@@ -29,13 +29,13 @@ func fakeDaraja(t *testing.T, stk http.HandlerFunc) (*Client, *atomic.Int32) {
 	mux.HandleFunc("/mpesa/stkpushquery/v1/query", stk)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return New(srv.URL, srv.URL), &oauthCalls
+	return New(Credentials{BaseURL: srv.URL, ConsumerKey: "ck", ConsumerSecret: "cs", ShortCode: "174379", Passkey: "pk"}), &oauthCalls
 }
 
-var ch = domain.Channel{Type: "till", Environment: "sandbox", ShortCode: "174379", TillNumber: "123456",
-	ConsumerKey: "ck", ConsumerSecret: "cs", Passkey: "pk"}
+var tillPush = app.STKPushRequest{TransactionType: domain.DestinationTill.TransactionType(), PartyB: "123456",
+	Amount: 1, Phone: "254712345678", AccountReference: "A", Description: "d", CallbackURL: "https://x"}
 
-func TestSTKPushTillAndTokenCache(t *testing.T) {
+func TestSTKPushRoutesWithPlatformShortcode(t *testing.T) {
 	c, oauth := fakeDaraja(t, func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]string
 		json.NewDecoder(r.Body).Decode(&body)
@@ -45,7 +45,7 @@ func TestSTKPushTillAndTokenCache(t *testing.T) {
 		w.Write([]byte(`{"MerchantRequestID":"m","CheckoutRequestID":"ws_CO_1","ResponseCode":"0"}`))
 	})
 	for range 3 {
-		ack, err := c.STKPush(context.Background(), ch, app.STKPushRequest{Amount: 1, Phone: "254712345678", AccountReference: "A", Description: "d", CallbackURL: "https://x"})
+		ack, err := c.STKPush(context.Background(), tillPush)
 		if err != nil || ack.CheckoutRequestID != "ws_CO_1" {
 			t.Fatalf("ack=%+v err=%v", ack, err)
 		}
@@ -60,27 +60,26 @@ func TestSTKPushRejectedVsAmbiguous(t *testing.T) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"requestId":"1","errorCode":"400.002.02","errorMessage":"Bad Request - Invalid PartyB"}`))
 	})
-	_, err := c.STKPush(context.Background(), ch, app.STKPushRequest{Amount: 1})
+	_, err := c.STKPush(context.Background(), tillPush)
 	var rej *app.RejectedError
 	if !errors.As(err, &rej) || rej.Code != "400.002.02" {
 		t.Fatalf("want RejectedError, got %v", err)
 	}
 
 	c, _ = fakeDaraja(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusBadGateway) })
-	_, err = c.STKPush(context.Background(), ch, app.STKPushRequest{Amount: 1})
+	_, err = c.STKPush(context.Background(), tillPush)
 	if err == nil || errors.As(err, &rej) {
 		t.Fatalf("want ambiguous error, got %v", err)
 	}
 }
 
-func TestBadCredentialsRejected(t *testing.T) {
+func TestOAuthFailureMeansNotSent(t *testing.T) {
 	c, _ := fakeDaraja(t, func(w http.ResponseWriter, r *http.Request) { t.Error("stk endpoint must not be reached") })
-	bad := ch
-	bad.ConsumerSecret = "wrong"
-	_, err := c.STKPush(context.Background(), bad, app.STKPushRequest{Amount: 1})
-	var rej *app.RejectedError
-	if !errors.As(err, &rej) {
-		t.Fatalf("want RejectedError, got %v", err)
+	c.creds.ConsumerSecret = "wrong"
+	_, err := c.STKPush(context.Background(), tillPush)
+	var notSent *app.NotSentError
+	if !errors.As(err, &notSent) {
+		t.Fatalf("want NotSentError, got %v", err)
 	}
 }
 
@@ -89,7 +88,7 @@ func TestSTKQuery(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"errorCode":"500.001.1001","errorMessage":"The transaction is being processed"}`))
 	})
-	q, err := c.STKQuery(context.Background(), ch, "ws_CO_1")
+	q, err := c.STKQuery(context.Background(), "ws_CO_1")
 	if err != nil || !q.Pending {
 		t.Fatalf("want pending, got %+v %v", q, err)
 	}
@@ -97,7 +96,7 @@ func TestSTKQuery(t *testing.T) {
 	c, _ = fakeDaraja(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"ResponseCode":"0","CheckoutRequestID":"ws_CO_1","ResultCode":"1032","ResultDesc":"Request cancelled by user"}`))
 	})
-	q, err = c.STKQuery(context.Background(), ch, "ws_CO_1")
+	q, err = c.STKQuery(context.Background(), "ws_CO_1")
 	if err != nil || q.Pending || q.Result.Code != 1032 {
 		t.Fatalf("got %+v %v", q, err)
 	}
