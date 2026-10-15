@@ -1,0 +1,390 @@
+openapi: 3.1.0
+info:
+  title: PayTrack API
+  version: 1.0.0
+  description: |
+    Multi-tenant M-Pesa STK push routing.
+
+    **Auth**: `Authorization: Bearer <token>` where token is either
+    - a dashboard session JWT from `/v1/auth/login` or `/v1/auth/register`, or
+    - an API key (`ptk_...`) for tenant backends.
+
+    Endpoints marked *user session only* reject API keys with 403.
+
+    **Errors** always use `{"error": {"code", "message", "request_id"}}`.
+
+    **Pagination**: list endpoints return `{data, has_more, next_cursor}`; pass
+    `cursor=<next_cursor>` to fetch the next (older) page. Newest first.
+
+    **Webhooks**: PayTrack POSTs a `PaymentEvent` to your webhook URL with headers
+    `PayTrack-Event-Id`, `PayTrack-Event-Type`, `PayTrack-Delivery-Id` and
+    `PayTrack-Signature: t=<unix>,v1=<hex HMAC-SHA256(signing_secret, "<t>.<raw body>")>`.
+    Verify the signature, reject timestamps older than 5 minutes, dedupe on event id,
+    and respond 2xx within 10s. Non-2xx responses are retried for ~16h.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearer: []
+
+paths:
+  /v1/auth/register:
+    post:
+      tags: [auth]
+      summary: Create a tenant and its owner user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [business_name, email, password]
+              properties:
+                business_name: { type: string, maxLength: 100 }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 10, maxLength: 72 }
+      responses:
+        "201": { description: Signed in, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Sign in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        "200": { description: Signed in, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /v1/me:
+    get:
+      tags: [auth]
+      summary: Current tenant (and user, for sessions)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant: { $ref: "#/components/schemas/Tenant" }
+                  user: { oneOf: [{ $ref: "#/components/schemas/User" }, { type: "null" }] }
+                  auth_kind: { type: string, enum: [user, api_key] }
+
+  /v1/api-keys:
+    get:
+      tags: [api-keys]
+      summary: List API keys (user session only)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/APIKeyList" } } } }
+    post:
+      tags: [api-keys]
+      summary: Create an API key (user session only). The `key` is returned only once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [name], properties: { name: { type: string } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/APIKey" } } } }
+  /v1/api-keys/{id}:
+    delete:
+      tags: [api-keys]
+      summary: Revoke an API key (user session only)
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "204": { description: Revoked }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /v1/channels:
+    get:
+      tags: [channels]
+      summary: List channels
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/Channel" } } } }
+    post:
+      tags: [channels]
+      summary: Register a Daraja channel
+      description: Credentials are encrypted at rest and never returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type, environment, short_code, consumer_key, consumer_secret, passkey]
+              properties:
+                name: { type: string }
+                type: { type: string, enum: [paybill, till] }
+                environment: { type: string, enum: [sandbox, production] }
+                short_code: { type: string, pattern: "^\\d{5,7}$", description: "PayBill number, or Buy Goods store number for tills" }
+                till_number: { type: string, pattern: "^\\d{5,7}$", description: "Required when type=till" }
+                consumer_key: { type: string }
+                consumer_secret: { type: string }
+                passkey: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Channel" } } } }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/channels/{id}:
+    get:
+      tags: [channels]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Channel" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [channels]
+      summary: Deactivate a channel (new payments on it are rejected)
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "204": { description: Deactivated }
+
+  /v1/webhook:
+    get:
+      tags: [webhook]
+      summary: Get webhook URL and signing secret
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Webhook" } } } }
+    put:
+      tags: [webhook]
+      summary: Set webhook URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [url], properties: { url: { type: string, format: uri } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Webhook" } } } }
+  /v1/webhook/rotate-secret:
+    post:
+      tags: [webhook]
+      summary: Rotate the signing secret (user session only)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Webhook" } } } }
+  /v1/webhook/deliveries:
+    get:
+      tags: [webhook]
+      summary: List webhook deliveries
+      parameters:
+        - { name: payment_id, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, delivering, delivered, failed] } }
+        - { $ref: "#/components/parameters/cursor" }
+        - { $ref: "#/components/parameters/limit" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties: { data: { type: array, items: { $ref: "#/components/schemas/Delivery" } } }
+  /v1/webhook/deliveries/{id}/redeliver:
+    post:
+      tags: [webhook]
+      summary: Queue a delivery again
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "202": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/Delivery" } } } }
+
+  /v1/payments:
+    post:
+      tags: [payments]
+      summary: Initiate an STK push
+      description: |
+        Returns 201 with status `pending` once Daraja accepts the push, `failed` if Daraja
+        rejected it, or `created` if Daraja's response was ambiguous (the final outcome then
+        arrives by webhook). Retrying with the same Idempotency-Key and body returns the
+        original payment with 200 and `Idempotent-Replayed: true`.
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, maxLength: 255 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel_id, amount, phone, account_reference]
+              properties:
+                channel_id: { type: string }
+                amount: { type: integer, minimum: 1, maximum: 250000, description: Whole KES }
+                phone: { type: string, example: "0712345678" }
+                account_reference: { type: string, maxLength: 12 }
+                description: { type: string, maxLength: 13, default: Payment }
+                metadata: { type: object, additionalProperties: { type: string }, maxProperties: 20 }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Payment" } } } }
+        "200": { description: Idempotent replay, content: { application/json: { schema: { $ref: "#/components/schemas/Payment" } } } }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+    get:
+      tags: [payments]
+      summary: List payments
+      parameters:
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/PaymentStatus" } }
+        - { name: channel_id, in: query, schema: { type: string } }
+        - { name: phone, in: query, schema: { type: string } }
+        - { $ref: "#/components/parameters/cursor" }
+        - { $ref: "#/components/parameters/limit" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties: { data: { type: array, items: { $ref: "#/components/schemas/Payment" } } }
+  /v1/payments/{id}:
+    get:
+      tags: [payments]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Payment" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+
+webhooks:
+  paymentEvent:
+    post:
+      summary: Payment reached a final (or expired) state
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PaymentEvent" }
+      responses:
+        "2XX": { description: Acknowledged }
+
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer }
+  parameters:
+    id: { name: id, in: path, required: true, schema: { type: string } }
+    cursor: { name: cursor, in: query, schema: { type: string } }
+    limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { type: string, example: invalid_phone }
+                  message: { type: string }
+                  request_id: { type: string }
+  schemas:
+    Page:
+      type: object
+      properties:
+        has_more: { type: boolean }
+        next_cursor: { type: string }
+    Tenant:
+      type: object
+      properties: { id: { type: string }, name: { type: string }, created_at: { type: string, format: date-time } }
+    User:
+      type: object
+      properties: { id: { type: string }, email: { type: string }, role: { type: string, enum: [owner] } }
+    Session:
+      type: object
+      properties:
+        token: { type: string }
+        expires_at: { type: string, format: date-time }
+        user: { $ref: "#/components/schemas/User" }
+        tenant: { $ref: "#/components/schemas/Tenant" }
+    APIKey:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        prefix: { type: string, example: ptk_a1b2c3 }
+        key: { type: string, description: Only present in the create response }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: [string, "null"], format: date-time }
+        revoked_at: { type: [string, "null"], format: date-time }
+    APIKeyList:
+      type: object
+      properties: { data: { type: array, items: { $ref: "#/components/schemas/APIKey" } } }
+    Channel:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [paybill, till] }
+        environment: { type: string, enum: [sandbox, production] }
+        short_code: { type: string }
+        till_number: { type: string }
+        active: { type: boolean }
+        created_at: { type: string, format: date-time }
+    Webhook:
+      type: object
+      properties:
+        url: { type: string }
+        signing_secret: { type: string, example: whsec_... }
+    PaymentStatus:
+      type: string
+      enum: [created, pending, succeeded, failed, cancelled, expired]
+    Payment:
+      type: object
+      properties:
+        id: { type: string, example: pay_01k7... }
+        channel_id: { type: string }
+        status: { $ref: "#/components/schemas/PaymentStatus" }
+        amount: { type: integer }
+        currency: { type: string, enum: [KES] }
+        phone: { type: string, example: "254712345678" }
+        account_reference: { type: string }
+        description: { type: string }
+        metadata: { type: object, additionalProperties: { type: string } }
+        merchant_request_id: { type: string }
+        checkout_request_id: { type: string }
+        mpesa_receipt_number: { type: string, description: Empty if the result was learned via status query }
+        result_code: { type: integer }
+        result_desc: { type: string }
+        failure_reason: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        completed_at: { type: [string, "null"], format: date-time }
+    PaymentEvent:
+      type: object
+      properties:
+        id: { type: string, example: evt_01k7... }
+        type: { type: string, enum: [payment.succeeded, payment.failed, payment.cancelled, payment.expired] }
+        tenant_id: { type: string }
+        created_at: { type: string, format: date-time }
+        data: { $ref: "#/components/schemas/Payment" }
+    Delivery:
+      type: object
+      properties:
+        id: { type: string }
+        event_id: { type: string }
+        event_type: { type: string }
+        payment_id: { type: string }
+        status: { type: string, enum: [pending, delivering, delivered, failed] }
+        attempts: { type: integer }
+        next_attempt_at: { type: [string, "null"], format: date-time }
+        last_error: { type: string }
+        last_status_code: { type: integer }
+        delivered_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+        payload: { $ref: "#/components/schemas/PaymentEvent" }

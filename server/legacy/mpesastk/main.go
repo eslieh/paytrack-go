@@ -8,6 +8,9 @@ import (
 	"strconv"
 )
 
+// set -a; source .env; set +a
+// go run .
+
 var indexTmpl = template.Must(template.New("index").Parse(`<!doctype html>
 <html>
 <head>
