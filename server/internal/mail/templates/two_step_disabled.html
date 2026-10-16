@@ -1,0 +1,17 @@
+{{define "subject"}}Two-step sign-in was turned off{{end}}
+{{define "preheader"}}Email codes are no longer required to sign in to your Paytrack account.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">Two-step sign-in turned off</h1>
+<p style="%%P%%">Signing in to Paytrack with your password no longer requires an email code. We recommend keeping it on, since your account controls where payments are routed.</p>
+{{template "device" .}}
+{{template "button" (dict "URL" (print .AppURL "/dashboard/settings") "Label" "Turn it back on")}}
+{{end}}
+{{define "footer"}}{{template "securityfooter" .}}{{end}}
+{{define "text"}}Two-step sign-in was turned off for your Paytrack account.
+
+When: {{.When}}
+Device: {{.Device}}
+IP: {{.IP}}
+
+Turn it back on: {{.AppURL}}/dashboard/settings
+{{end}}

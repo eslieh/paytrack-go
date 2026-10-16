@@ -1,5 +1,5 @@
-// Package security implements password hashing (bcrypt) and dashboard
-// session tokens (HS256 JWT).
+// Package security implements password hashing (bcrypt) and session-bound
+// access tokens (HS256 JWT carrying the session ID).
 package security
 
 import (
@@ -33,14 +33,15 @@ type JWT struct {
 }
 
 type claims struct {
-	TenantID string `json:"tid"`
+	TenantID  string `json:"tid"`
+	SessionID string `json:"sid"`
 	jwt.RegisteredClaims
 }
 
-func (j JWT) Issue(userID, tenantID string) (string, time.Time, error) {
+func (j JWT) Issue(userID, tenantID, sessionID string) (string, time.Time, error) {
 	exp := time.Now().Add(j.TTL)
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims{
-		TenantID: tenantID,
+		TenantID: tenantID, SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject: userID, Issuer: issuer,
 			IssuedAt: jwt.NewNumericDate(time.Now()), ExpiresAt: jwt.NewNumericDate(exp),
@@ -50,15 +51,15 @@ func (j JWT) Issue(userID, tenantID string) (string, time.Time, error) {
 	return s, exp, err
 }
 
-func (j JWT) Verify(token string) (string, string, error) {
+func (j JWT) Verify(token string) (string, string, string, error) {
 	var c claims
 	_, err := jwt.ParseWithClaims(token, &c, func(*jwt.Token) (any, error) { return j.Secret, nil },
 		jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(issuer), jwt.WithExpirationRequired())
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	if c.Subject == "" || c.TenantID == "" {
-		return "", "", errors.New("token missing subject or tenant")
+	if c.Subject == "" || c.TenantID == "" || c.SessionID == "" {
+		return "", "", "", errors.New("token missing subject, tenant or session")
 	}
-	return c.Subject, c.TenantID, nil
+	return c.Subject, c.TenantID, c.SessionID, nil
 }

@@ -10,10 +10,12 @@ This is one Go module and one container image. It has four modules, each a hexag
 
 | Module | Owns | Inbound adapters | Outbound adapters |
 |---|---|---|---|
-| `tenant` | tenants, users, API keys, channels (routing destinations), bank catalog, webhook config | HTTP | Postgres, bcrypt/JWT |
+| `identity` | users, sessions, Google identities, verification/reset/sign-in-code tokens, trusted devices, security audit log | HTTP | Postgres, bcrypt/JWT, Google OAuth, mail, rate limiter, tenant (in-process) |
+| `tenant` | tenants, API keys, channels (routing destinations), bank catalog, webhook config, notification settings, setup checklist | HTTP | Postgres, identity / payment / mail (in-process) |
+| `mail` | transactional email queue, templates (dashboard design language), delivery log | called in-process by other modules (`Enqueue`) | Postgres, Resend (or a log sender in dev) |
 | `payment` | Payment aggregate + state machine, reconciliation | HTTP, Kafka (`mpesa.stk-callbacks.v1`) | Postgres + outbox, Daraja, tenant (in-process) |
 | `callback` | raw Daraja callback inbox | HTTP (public) | Postgres + outbox |
-| `notify` | webhook deliveries, retries | Kafka (`payment.events.v1`), HTTP | Postgres, HTTP sender, tenant (in-process) |
+| `notify` | webhook deliveries, retries; merchant receipt, first-payment and webhook-failure emails | Kafka (`payment.events.v1`), HTTP | Postgres, HTTP sender, tenant + mail (in-process) |
 
 Rules:
 - `domain` packages import nothing from adapters, Postgres, Kafka or HTTP.
@@ -42,7 +44,7 @@ One binary, deployed as separate containers per role so each scales and fails in
 |---|---|---|---|
 | `api` | `:9710` REST (dashboard + tenant backends) | Postgres, Daraja | Doesn't need Kafka, so payments can still be initiated during a Kafka outage |
 | `callback` | `:9711` `POST /callbacks/mpesa/stk/{token}` (public) | Postgres only | Smallest possible dependency set; must always be up |
-| `worker` | `:9712` health | Postgres, Kafka, Daraja, tenant webhooks | Outbox relay, consumers, reconciler, webhook dispatcher |
+| `worker` | `:9712` health | Postgres, Kafka, Daraja, tenant webhooks, Resend | Outbox relay, consumers, reconciler, webhook dispatcher, email dispatcher, setup reminders |
 | `migrate` | none | Postgres | Runs once per deploy (advisory-locked) |
 
 ## Payment flow
@@ -128,10 +130,58 @@ Each payment stores a snapshot of `destination_type`, `PartyB` and `bank_name`, 
 
 ## Auth model
 
-- **Dashboard users** register or log in with email and password and receive a JWT (HS256, `JWT_TTL`). They manage API keys, channels and webhook settings, and view payments and deliveries.
-- **Tenant backends** use API keys (`ptk_…`, stored as SHA-256 hashes, revocable) to create and read payments and channels.
-- Both resolve to a `tenant_id`, which every query is scoped by. The tenant ID never comes from request input.
-- API key management and secret rotation require a user session.
+Two kinds of credential both resolve to a `tenant_id`, which scopes every query. The tenant ID never comes from request input.
+
+- **Tenant backends** use API keys (`ptk_…`). Keys are stored as SHA-256 hashes, can be revoked, and can only be created by a verified dashboard user.
+- **Dashboard users** have revocable sessions (`identity.sessions`):
+  - **Access token:** a 15-minute HS256 JWT carrying the session ID. The session row is checked on every request, so signing out takes effect immediately.
+  - **Refresh token:** an httpOnly `SameSite=Lax` cookie (`pt_refresh`, 30 days) that rotates on every `POST /v1/auth/refresh`. Reusing an already-rotated token revokes the session. A 20-second grace window covers two tabs refreshing at once.
+  - **Logout** revokes the session on the server and clears the cookie.
+  - **Where it lives:** the dashboard calls the API through its own `/api` path (a Next.js rewrite). That keeps the cookie first-party on every dashboard domain, and the access token stays in memory only.
+
+### Sign-in
+
+| Method | Flow |
+|---|---|
+| Email + password | Correct password on an **untrusted device** with two-step on (the default) → `{mfa_required, challenge}`, and a 6-digit code is emailed. The code is HMAC-hashed, expires in 10 minutes, allows 5 attempts, and can be resent after 30 seconds (up to 5 sends). `remember_device` sets a 30-day `pt_device` cookie. A trusted device, or two-step turned off, signs in directly and sends a "new sign-in" alert for untrusted devices. |
+| Google | Authorization-code flow with PKCE and nonce, run by the backend with the client secret. The redirect URI is `<dashboard origin>/api/v1/auth/google/callback`, and an OAuth state cookie binds the flow to the browser. A linked identity signs in. A matching **verified** email links the Google account automatically. A matching **unverified** email is taken over safely: the unproven password is dropped and every session revoked. A new email goes to `/auth/google/complete` to name the business. Google sign-in skips email codes, since Google applies its own 2-step. |
+
+### Verification and recovery
+
+- **Sign-up** creates an unverified owner and emails a verification link (24 hours, single use, stored as a hash). Until the owner verifies, `RequireVerified` blocks creating API keys, channels and payments. Verifying sends the welcome email.
+- **Forgot password** always returns 202. The reset link lasts 30 minutes and works once. Completing a reset sets the new password, marks the email verified, revokes every session and trusted device, sends a "password changed" email and signs the user in.
+- **Changing the password** (or setting a first one on a Google-only account) signs out the other sessions. Turning two-step off requires the password and sends an alert email.
+
+### Abuse controls and audit
+
+- **Rate limits** use a Postgres fixed-window limiter, shared by every replica:
+  - login: 30 per IP and 10 per email per 15 minutes
+  - code checks: 30 per IP per 15 minutes
+  - sign-up: 10 per IP per hour
+  - forgot password: 10 per IP and 3 per email per hour
+  - verification resends: 5 per user per hour
+  - responses are 429 `rate_limited`
+- **Audit log:** `identity.security_events` records sign-ins, failures, codes, password and two-step changes, Google link/unlink, session revocations and refresh-token reuse. It's shown under Settings → Security.
+
+## Transactional email
+
+- **Queueing:** modules call their `Mailer` port, which the mail module's `Enqueue` satisfies. The template is rendered once up front, so a bad template or data bug fails at the call site, then the message is queued in `mail.messages`.
+- **Sending:** the worker's email dispatcher sends through Resend (`Idempotency-Key` = message ID), using `SKIP LOCKED` leases and backoff (30s → 2h). 4xx responses other than 429 are permanent failures.
+- **Dedupe:** a `dedupe_key` makes events safe to process more than once (`receipt:<payment>`, `first_payment:<tenant>`, `setup_reminder:<tenant>:<day>`, `welcome:<user>`).
+- **Templates:** Go `html/template` files embedded in the binary (`internal/mail/templates`), sharing one layout built from the dashboard's design tokens (`tokens.go`, copied from `globals.css`):
+  - Figtree, the indigo `#6472f3` wordmark and button, a white 16px card with a `#e9ebf4` border, and the soft indigo gradient
+  - the receipt email mirrors `/receipt`
+  - every email also has a plain-text part, and data is auto-escaped
+- **Without `RESEND_API_KEY`**, emails are written to the log instead of sent (development).
+
+| Group | Templates | Trigger |
+|---|---|---|
+| Security (always sent) | `verify_email`, `login_code`, `password_reset`, `password_changed`, `new_signin`, `two_step_disabled`, `google_linked` | identity use cases |
+| Lifecycle | `welcome`, `setup_reminder` (day 1 and day 3 if the checklist is incomplete, verified owners only), `first_payment` | verification, an hourly worker job, the first `payment.succeeded` |
+| Payments | `payment_receipt`, sent to the merchant when **payment receipts** are on, at `receipt_email` or the owner's address | `payment.succeeded` in notify |
+| Operations | `webhook_failing`, when a delivery exhausts its retries (on by default) | notify dispatcher |
+
+Settings → Notifications shows a live preview of the real templates (`GET /v1/settings/notifications/preview`) and can send a test receipt.
 
 ## High availability on EC2
 
@@ -167,6 +217,8 @@ Target layout, with every role running as a container on at least two instances 
 - Shared token cache (Redis) once API/worker replica count makes per-process OAuth calls noticeable.
 - Bank catalog in the database (admin-managed) instead of code; verify each bank's PayBill before production.
 - OpenTelemetry tracing and metrics: stuck-pending count, callback rate, DLQ depth, webhook failure rate.
-- Team members and roles per tenant; password reset; refresh tokens.
+- Team members and roles per tenant; TOTP authenticator apps as a stronger second factor.
+- Resend bounce/complaint webhooks → a suppression list, plus email delivery status in the dashboard.
+- Daily payment summary email.
 - C2B register-URL flow (customers paying the PayBill directly without an STK prompt) as a new inbound adapter.
 - Integration tests against Postgres and Kafka (testcontainers).

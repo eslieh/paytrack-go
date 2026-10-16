@@ -45,7 +45,25 @@ type Config struct {
 
 	EncryptionKey []byte
 	JWTSecret     []byte
-	JWTTTL        time.Duration
+
+	// Dashboard sessions: short-lived access JWT + rotating refresh cookie.
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
+	CookieSecure    bool // false only for plain-http local development
+	APITrustXFF     bool // the API sits behind the Next.js proxy / a load balancer
+
+	// AppBaseURL is the canonical dashboard URL used in email links.
+	AppBaseURL string
+	// APIPublicPath is where the dashboard proxies the API (Next.js rewrite),
+	// e.g. "/api"; OAuth redirect URIs are <dashboard origin><path>/v1/auth/google/callback.
+	APIPublicPath string
+
+	GoogleClientID     string
+	GoogleClientSecret string
+
+	ResendAPIKey string
+	EmailFrom    string
+	EmailReplyTo string
 
 	CORSAllowedOrigins []string
 
@@ -81,6 +99,15 @@ func Load(role Role) (*Config, error) {
 			Passkey:        os.Getenv("MPESA_PASSKEY"),
 		},
 		CallbackTrustXFF:       os.Getenv("CALLBACK_TRUST_XFF") == "true",
+		APITrustXFF:            os.Getenv("API_TRUST_XFF") == "true",
+		CookieSecure:           os.Getenv("COOKIE_SECURE") != "false",
+		AppBaseURL:             strings.TrimRight(os.Getenv("APP_BASE_URL"), "/"),
+		APIPublicPath:          "/" + strings.Trim(env("API_PUBLIC_PATH", "/api"), "/"),
+		GoogleClientID:         os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:     os.Getenv("GOOGLE_CLIENT_SECRET"),
+		ResendAPIKey:           os.Getenv("RESEND_API_KEY"),
+		EmailFrom:              env("EMAIL_FROM", "Paytrack <no-reply@localhost>"),
+		EmailReplyTo:           os.Getenv("EMAIL_REPLY_TO"),
 		WebhookAllowPrivate:    os.Getenv("WEBHOOK_ALLOW_PRIVATE") == "true",
 		KafkaPartitions:        intEnv("KAFKA_PARTITIONS", 6),
 		KafkaReplicationFactor: intEnv("KAFKA_REPLICATION_FACTOR", 1),
@@ -131,15 +158,23 @@ func Load(role Role) (*Config, error) {
 	if has(RoleAPI) {
 		c.JWTSecret = []byte(os.Getenv("JWT_SECRET"))
 		need("JWT_SECRET (>= 32 chars)", len(c.JWTSecret) >= 32)
-		ttl, err := time.ParseDuration(env("JWT_TTL", "12h"))
-		if err != nil {
-			return nil, fmt.Errorf("JWT_TTL: %w", err)
+		var err error
+		if c.AccessTokenTTL, err = time.ParseDuration(env("ACCESS_TOKEN_TTL", "15m")); err != nil {
+			return nil, fmt.Errorf("ACCESS_TOKEN_TTL: %w", err)
 		}
-		c.JWTTTL = ttl
+		if c.RefreshTokenTTL, err = time.ParseDuration(env("REFRESH_TOKEN_TTL", "720h")); err != nil {
+			return nil, fmt.Errorf("REFRESH_TOKEN_TTL: %w", err)
+		}
+		if (c.GoogleClientID == "") != (c.GoogleClientSecret == "") {
+			missing = append(missing, "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (set both, or neither to disable Google sign-in)")
+		}
 		need("PUBLIC_CALLBACK_BASE_URL", strings.HasPrefix(c.PublicCallbackBaseURL, "https://") || strings.HasPrefix(c.PublicCallbackBaseURL, "http://"))
 	}
 	if has(RoleWorker) {
 		need("KAFKA_BROKERS", len(c.KafkaBrokers) > 0)
+	}
+	if has(RoleAPI, RoleWorker) {
+		need("APP_BASE_URL (dashboard URL used in email links)", strings.HasPrefix(c.AppBaseURL, "http"))
 	}
 	if has(RoleCallback) {
 		for _, s := range list(os.Getenv("CALLBACK_ALLOWED_CIDRS")) {

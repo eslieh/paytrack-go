@@ -1,0 +1,15 @@
+{{define "subject"}}Finish setting up {{.BusinessName}} on Paytrack{{end}}
+{{define "preheader"}}You're a few steps away from your first M-Pesa payment.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">You're almost there</h1>
+<p style="%%P%%">{{.BusinessName}} is a few steps away from taking its first M-Pesa payment through Paytrack.</p>
+{{template "checklist" .Steps}}
+{{template "button" (dict "URL" .DashboardURL "Label" "Continue setup")}}
+{{end}}
+{{define "footer"}}You're receiving this because you signed up for Paytrack and haven't finished setup. We'll stop once you're done.{{end}}
+{{define "text"}}Finish setting up {{.BusinessName}} on Paytrack
+{{range .Steps}}
+[{{if .Done}}x{{else}} {{end}}] {{.Label}}{{end}}
+
+Continue: {{.DashboardURL}}
+{{end}}

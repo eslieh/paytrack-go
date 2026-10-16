@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -12,6 +14,16 @@ import (
 	callbackpg "github.com/eslieh/paytrack-go/server/internal/callback/adapters/postgres"
 	callbackapp "github.com/eslieh/paytrack-go/server/internal/callback/app"
 	"github.com/eslieh/paytrack-go/server/internal/contracts"
+	googleadapter "github.com/eslieh/paytrack-go/server/internal/identity/adapters/google"
+	identityhttp "github.com/eslieh/paytrack-go/server/internal/identity/adapters/http"
+	identitypg "github.com/eslieh/paytrack-go/server/internal/identity/adapters/postgres"
+	"github.com/eslieh/paytrack-go/server/internal/identity/adapters/security"
+	identityapp "github.com/eslieh/paytrack-go/server/internal/identity/app"
+	"github.com/eslieh/paytrack-go/server/internal/mail/adapters/logsender"
+	mailpg "github.com/eslieh/paytrack-go/server/internal/mail/adapters/postgres"
+	"github.com/eslieh/paytrack-go/server/internal/mail/adapters/resend"
+	mailapp "github.com/eslieh/paytrack-go/server/internal/mail/app"
+	"github.com/eslieh/paytrack-go/server/internal/mail/templates"
 	notifyhttp "github.com/eslieh/paytrack-go/server/internal/notify/adapters/http"
 	notifykafka "github.com/eslieh/paytrack-go/server/internal/notify/adapters/kafka"
 	notifypg "github.com/eslieh/paytrack-go/server/internal/notify/adapters/postgres"
@@ -31,10 +43,10 @@ import (
 	"github.com/eslieh/paytrack-go/server/internal/platform/httpx"
 	"github.com/eslieh/paytrack-go/server/internal/platform/kafka"
 	"github.com/eslieh/paytrack-go/server/internal/platform/outbox"
+	"github.com/eslieh/paytrack-go/server/internal/platform/ratelimit"
 	"github.com/eslieh/paytrack-go/server/internal/platform/run"
 	tenanthttp "github.com/eslieh/paytrack-go/server/internal/tenant/adapters/http"
 	tenantpg "github.com/eslieh/paytrack-go/server/internal/tenant/adapters/postgres"
-	"github.com/eslieh/paytrack-go/server/internal/tenant/adapters/security"
 	tenantapp "github.com/eslieh/paytrack-go/server/internal/tenant/app"
 	"github.com/eslieh/paytrack-go/server/migrations"
 )
@@ -42,10 +54,21 @@ import (
 // modules holds the application services; adapters are wired here and
 // nowhere else.
 type modules struct {
+	identity *identityapp.Service
 	tenants  *tenantapp.Service
 	payments *paymentapp.Service
 	notify   *notifyapp.Service
 	callback *callbackapp.Service
+	mail     *mailapp.Service
+	limiter  *ratelimit.Limiter
+}
+
+// previewer adapts the mail module to the tenant module's Previewer port.
+type previewer struct{ mail *mailapp.Service }
+
+func (p previewer) Preview(template string, data map[string]any) (tenantapp.Rendered, error) {
+	r, err := p.mail.Preview(template, data)
+	return tenantapp.Rendered{Subject: r.Subject, HTML: r.HTML, Text: r.Text}, err
 }
 
 func build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*modules, error) {
@@ -60,17 +83,42 @@ func build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*module
 	if err := crypto.VerifyKey(ctx, pool, cipher); err != nil {
 		return nil, err
 	}
-	m.tenants, err = tenantapp.NewService(tenantpg.New(pool, cipher), security.Bcrypt{},
-		security.JWT{Secret: cfg.JWTSecret, TTL: cfg.JWTTTL})
+
+	renderer, err := templates.New()
 	if err != nil {
 		return nil, err
 	}
+	var sender mailapp.Sender = logsender.Sender{}
+	if cfg.ResendAPIKey != "" {
+		sender = resend.New(cfg.ResendAPIKey)
+	} else {
+		slog.Warn("RESEND_API_KEY not set: emails are logged, not sent")
+	}
+	m.mail = mailapp.NewService(mailpg.New(pool), renderer, sender, cfg.EmailFrom, cfg.EmailReplyTo, cfg.AppBaseURL)
+	m.limiter = ratelimit.New(pool)
+
+	m.tenants = tenantapp.NewService(tenantpg.New(pool, cipher))
+
+	var google identityapp.Google
+	if cfg.GoogleClientID != "" {
+		google = googleadapter.New(cfg.GoogleClientID, cfg.GoogleClientSecret)
+	}
+	codeKey := sha256.Sum256(append([]byte("paytrack-login-code|"), cfg.EncryptionKey...))
+	m.identity, err = identityapp.NewService(identitypg.New(pool), security.Bcrypt{},
+		security.JWT{Secret: cfg.JWTSecret, TTL: cfg.AccessTokenTTL}, m.mail, m.limiter, m.tenants, google,
+		identityapp.Config{AppBaseURL: cfg.AppBaseURL, RefreshTTL: cfg.RefreshTokenTTL, CodeKey: codeKey[:], GoogleEnabled: google != nil})
+	if err != nil {
+		return nil, err
+	}
+
 	m.payments = paymentapp.NewService(paymentpg.New(pool), paymenttenant.Channels{Tenants: m.tenants},
 		daraja.New(daraja.Credentials{
 			BaseURL: cfg.Mpesa.BaseURL, ConsumerKey: cfg.Mpesa.ConsumerKey, ConsumerSecret: cfg.Mpesa.ConsumerSecret,
 			ShortCode: cfg.Mpesa.ShortCode, Passkey: cfg.Mpesa.Passkey,
 		}), cfg.PublicCallbackBaseURL)
-	m.notify = notifyapp.NewService(notifypg.New(pool), notifytenant.Targets{Tenants: m.tenants}, webhook.New(cfg.WebhookAllowPrivate))
+	m.tenants.Wire(m.identity, m.payments, m.mail, previewer{m.mail}, cfg.AppBaseURL)
+	m.notify = notifyapp.NewService(notifypg.New(pool), notifytenant.Targets{Tenants: m.tenants}, webhook.New(cfg.WebhookAllowPrivate),
+		notifytenant.Prefs{Tenants: m.tenants}, m.mail, cfg.AppBaseURL)
 	return m, nil
 }
 
@@ -130,8 +178,19 @@ func health(mux *http.ServeMux, pool *pgxpool.Pool) {
 func apiHandler(cfg *config.Config, m *modules, pool *pgxpool.Pool) http.Handler {
 	mux := http.NewServeMux()
 	health(mux, pool)
-	authed := auth.Middleware(m.tenants)
-	tenanthttp.New(m.tenants).Register(mux, authed)
+	// API keys belong to tenants; everything else is a dashboard session.
+	authed := auth.Middleware(auth.AuthenticatorFunc(func(ctx context.Context, bearer string) (auth.Principal, error) {
+		if tenantapp.IsAPIKey(bearer) {
+			return m.tenants.AuthenticateAPIKey(ctx, bearer)
+		}
+		return m.identity.Authenticate(ctx, bearer)
+	}))
+	identityhttp.New(m.identity, m.tenants, identityhttp.Config{
+		CookieSecure: cfg.CookieSecure, TrustXFF: cfg.APITrustXFF, AllowedOrigins: cfg.CORSAllowedOrigins,
+		AppBaseURL: cfg.AppBaseURL, APIPublicPath: cfg.APIPublicPath,
+	}).Register(mux, authed)
+	samples := func(tpl string) map[string]any { return templates.Samples(cfg.AppBaseURL)[tpl] }
+	tenanthttp.New(m.tenants, samples).Register(mux, authed)
 	paymenthttp.New(m.payments).Register(mux, authed)
 	notifyhttp.New(m.notify).Register(mux, authed)
 	return httpx.Chain(mux, httpx.Common, httpx.CORS(cfg.CORSAllowedOrigins))
@@ -173,4 +232,11 @@ func startWorker(ctx context.Context, g *errgroup.Group, cfg *config.Config, m *
 	}).RunFunc(ctx))
 	g.Go(func() error { return run.Poll(ctx, "reconciler", 5*time.Second, m.payments.Reconcile) })
 	g.Go(func() error { return run.Poll(ctx, "webhook-dispatcher", time.Second, m.notify.Dispatch) })
+	g.Go(func() error { return run.Poll(ctx, "mail-dispatcher", time.Second, m.mail.Dispatch) })
+	g.Go(func() error { return run.Poll(ctx, "setup-reminders", time.Hour, m.tenants.SendSetupReminders) })
+	g.Go(func() error {
+		return run.Poll(ctx, "rate-limit-prune", time.Hour, func(ctx context.Context) (bool, error) {
+			return false, m.limiter.Prune(ctx)
+		})
+	})
 }

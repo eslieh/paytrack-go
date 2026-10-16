@@ -16,7 +16,7 @@ type Handler struct{ svc *app.Service }
 func New(svc *app.Service) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) Register(mux *http.ServeMux, authed func(http.Handler) http.Handler) {
-	mux.Handle("POST /v1/payments", authed(http.HandlerFunc(h.create)))
+	mux.Handle("POST /v1/payments", authed(auth.RequireVerified(http.HandlerFunc(h.create))))
 	mux.Handle("GET /v1/payments", authed(http.HandlerFunc(h.list)))
 	mux.Handle("GET /v1/payments/{id}", authed(http.HandlerFunc(h.get)))
 }

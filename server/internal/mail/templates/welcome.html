@@ -1,0 +1,19 @@
+{{define "subject"}}Welcome to Paytrack, {{.BusinessName}}{{end}}
+{{define "preheader"}}Your account is ready. Here's how to take your first M-Pesa payment.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">Welcome to Paytrack</h1>
+<p style="%%P%%">Your email is verified and {{.BusinessName}} is ready. Paytrack sends M-Pesa STK pushes for you and routes the money straight to your bank account, PayBill or Till, then tells your backend with a signed webhook.</p>
+<p style="%%P%%margin-bottom:8px;"><strong style="color:%%fg%%;">Get set up in four steps</strong></p>
+{{template "checklist" .Steps}}
+{{template "button" (dict "URL" .DashboardURL "Label" "Open your dashboard")}}
+<p style="%%SMALL%%">Need the API reference? <a href="{{.AppURL}}/docs" style="color:%%primary%%;">Read the docs</a>.</p>
+{{end}}
+{{define "text"}}Welcome to Paytrack, {{.BusinessName}}
+
+Your email is verified and your account is ready. Get set up:
+{{range .Steps}}
+[{{if .Done}}x{{else}} {{end}}] {{.Label}}{{end}}
+
+Open your dashboard: {{.DashboardURL}}
+Docs: {{.AppURL}}/docs
+{{end}}

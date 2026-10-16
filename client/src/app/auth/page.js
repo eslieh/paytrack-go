@@ -1,15 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Mail, Lock, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, ArrowRight } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext.jsx";
-
-// Only follow same-site relative redirects.
-function safeNext(next) {
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
-}
+import { AUTH_ERRORS, ErrorLine, GoogleButton, IconField, PasswordInput, safeNext } from "@/components/auth.jsx";
 
 export default function LoginPage() {
   return (
@@ -20,13 +16,13 @@ export default function LoginPage() {
 }
 
 function Login() {
-  const [showPassword, setShowPassword] = useState(false);
+  const params = useSearchParams();
+  const next = safeNext(params.get("next"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(AUTH_ERRORS[params.get("error")] || "");
   const router = useRouter();
-  const next = safeNext(useSearchParams().get("next"));
   const { login, token, loading } = useAuth();
 
   useEffect(() => {
@@ -38,10 +34,15 @@ function Login() {
     setSubmitting(true);
     setError("");
     try {
-      await login(email.trim(), password);
+      const res = await login(email.trim(), password);
+      if (res.challenge) {
+        const q = new URLSearchParams({ c: res.challenge.id, e: res.challenge.masked_email, next });
+        router.push(`/auth/verify-code?${q}`);
+        return;
+      }
       router.push(next);
     } catch (err) {
-      setError(err.message || "Login failed");
+      setError(err.message || "Sign in failed");
     } finally {
       setSubmitting(false);
     }
@@ -55,50 +56,33 @@ function Login() {
       </div>
       <div className="card-body">
         <form className="stack" onSubmit={onSubmit}>
-          <label className="stack" htmlFor="email">
-            <span style={{fontSize: 13, color: "#555b73", fontWeight: 600}}>Email</span>
-            <div style={{position: "relative", width: "100%"}}>
-              <Mail size={18} color="#7b82a1" style={{position: "absolute", left: 12, top: 12}} />
-              <input id="email" type="email" autoComplete="email" className="input" placeholder="you@example.com" style={{paddingLeft: 38}} value={email} onChange={(e)=>setEmail(e.target.value)} required />
+          <GoogleButton next={next} />
+
+          <IconField id="email" label="Email" icon={Mail}>
+            <input id="email" type="email" autoComplete="email" className="input" placeholder="you@example.com" style={{ paddingLeft: 38 }} value={email} onChange={(e) => setEmail(e.target.value)} required />
+          </IconField>
+
+          <label className="stack" htmlFor="password" style={{ gap: 6 }}>
+            <span className="row">
+              <span style={{ fontSize: 13, color: "#555b73", fontWeight: 600 }}>Password</span>
+              <Link href="/auth/forgot" style={{ fontSize: 13, color: "#6472f3", fontWeight: 600 }}>Forgot password?</Link>
+            </span>
+            <div style={{ position: "relative", width: "100%" }}>
+              <Lock size={18} color="#7b82a1" style={{ position: "absolute", left: 12, top: 12 }} />
+              <PasswordInput id="password" value={password} onChange={setPassword} />
             </div>
           </label>
 
-          <label className="stack" htmlFor="password">
-            <span style={{fontSize: 13, color: "#555b73", fontWeight: 600}}>Password</span>
-            <div style={{position: "relative", width: "100%"}}>
-              <Lock size={18} color="#7b82a1" style={{position: "absolute", left: 12, top: 12}} />
-              <input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
-                className="input"
-                placeholder="••••••••"
-                style={{paddingLeft: 38, paddingRight: 38}}
-                value={password}
-                onChange={(e)=>setPassword(e.target.value)}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                style={{position: "absolute", right: 12, top: 12, background: "none", border: 0, padding: 0, cursor: "pointer"}}
-              >
-                {showPassword ? <EyeOff size={18} color="#7b82a1" /> : <Eye size={18} color="#7b82a1" />}
-              </button>
-            </div>
-          </label>
-
-          {error && (<div style={{color: "#b42318", fontSize: 13}}>{error}</div>)}
+          <ErrorLine error={error} />
 
           <button className="btn btn-primary" type="submit" disabled={submitting}>
             {submitting ? "Signing in..." : "Sign in"}
             <ArrowRight size={18} />
           </button>
 
-          <div className="row" style={{marginTop: 8}}>
-            <span style={{fontSize: 13, color: "#667085"}}>No account?</span>
-            <Link href="/auth/register" className="btn btn-ghost" style={{padding: 0}}>Create one</Link>
+          <div className="row" style={{ marginTop: 8 }}>
+            <span style={{ fontSize: 13, color: "#667085" }}>No account?</span>
+            <Link href="/auth/register" className="btn btn-ghost" style={{ padding: 0 }}>Create one</Link>
           </div>
         </form>
       </div>

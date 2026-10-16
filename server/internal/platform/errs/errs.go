@@ -17,6 +17,7 @@ const (
 	KindConflict
 	KindUnauthorized
 	KindForbidden
+	KindRateLimited
 )
 
 type Error struct {
@@ -42,6 +43,7 @@ func NotFound(code, msg string) *Error     { return E(KindNotFound, code, msg) }
 func Conflict(code, msg string) *Error     { return E(KindConflict, code, msg) }
 func Unauthorized(code, msg string) *Error { return E(KindUnauthorized, code, msg) }
 func Forbidden(code, msg string) *Error    { return E(KindForbidden, code, msg) }
+func RateLimited(msg string) *Error        { return E(KindRateLimited, "rate_limited", msg) }
 
 // As extracts an *Error from err's chain.
 func As(err error) (*Error, bool) {

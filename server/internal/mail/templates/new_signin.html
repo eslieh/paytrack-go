@@ -1,0 +1,18 @@
+{{define "subject"}}New sign-in to your Paytrack account{{end}}
+{{define "preheader"}}We noticed a sign-in from a new device.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">New sign-in</h1>
+<p style="%%P%%">Your Paytrack account was signed in to from a device we haven't seen before, using {{.Method}}.</p>
+{{template "device" .}}
+<p style="%%P%%">If this was you, you can ignore this email. If not, reset your password and sign out other sessions from Settings &rarr; Security.</p>
+{{template "button" (dict "URL" (print .AppURL "/dashboard/settings") "Label" "Review security")}}
+{{end}}
+{{define "footer"}}{{template "securityfooter" .}}{{end}}
+{{define "text"}}New sign-in to your Paytrack account ({{.Method}})
+
+When: {{.When}}
+Device: {{.Device}}
+IP: {{.IP}}
+
+If this wasn't you, reset your password ({{.AppURL}}/auth/forgot) and sign out other sessions: {{.AppURL}}/dashboard/settings
+{{end}}

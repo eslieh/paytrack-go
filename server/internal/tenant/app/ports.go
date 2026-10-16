@@ -5,23 +5,25 @@ import (
 	"errors"
 	"time"
 
+	"github.com/eslieh/paytrack-go/server/internal/contracts"
 	"github.com/eslieh/paytrack-go/server/internal/tenant/domain"
 )
 
-var (
-	ErrNotFound   = errors.New("not found")
-	ErrEmailTaken = errors.New("email already registered")
-)
+var ErrNotFound = errors.New("not found")
 
 // Repository is the tenant module's persistence port. Implementations
 // encrypt WebhookSecret at rest.
 type Repository interface {
-	CreateTenantWithOwner(ctx context.Context, t *domain.Tenant, u *domain.User) error
+	CreateTenant(ctx context.Context, t *domain.Tenant) error
 	GetTenant(ctx context.Context, id string) (*domain.Tenant, error)
 	UpdateWebhook(ctx context.Context, tenantID, url, secret string) error
+	ListTenantsCreatedBetween(ctx context.Context, from, to time.Time) ([]*domain.Tenant, error)
 
-	GetUser(ctx context.Context, id string) (*domain.User, error)
-	GetUserByEmail(ctx context.Context, email string) (*domain.User, error)
+	GetNotificationSettings(ctx context.Context, tenantID string) (domain.NotificationSettings, error)
+	SaveNotificationSettings(ctx context.Context, s domain.NotificationSettings) error
+
+	HasActiveChannel(ctx context.Context, tenantID string) (bool, error)
+	HasActiveAPIKey(ctx context.Context, tenantID string) (bool, error)
 
 	CreateAPIKey(ctx context.Context, k *domain.APIKey) error
 	ListAPIKeys(ctx context.Context, tenantID string) ([]*domain.APIKey, error)
@@ -35,13 +37,27 @@ type Repository interface {
 	DeactivateChannel(ctx context.Context, tenantID, id string) error
 }
 
-type PasswordHasher interface {
-	Hash(password string) (string, error)
-	Compare(hash, password string) bool
+// Owners is the identity module, seen from tenant (owner contact details).
+type Owners interface {
+	OwnerContact(ctx context.Context, tenantID string) (email string, verified bool, err error)
 }
 
-// TokenIssuer issues and verifies dashboard session tokens.
-type TokenIssuer interface {
-	Issue(userID, tenantID string) (token string, expiresAt time.Time, err error)
-	Verify(token string) (userID, tenantID string, err error)
+// PaymentStats is the payment module, seen from tenant.
+type PaymentStats interface {
+	HasSucceededPayment(ctx context.Context, tenantID string) (bool, error)
+}
+
+type Mailer interface {
+	Enqueue(ctx context.Context, e contracts.Email) error
+}
+
+// Previewer renders an email template for the notification-settings preview.
+type Previewer interface {
+	Preview(template string, data map[string]any) (Rendered, error)
+}
+
+type Rendered struct {
+	Subject string
+	HTML    string
+	Text    string
 }

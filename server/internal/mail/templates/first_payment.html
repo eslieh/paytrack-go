@@ -1,0 +1,13 @@
+{{define "subject"}}🎉 {{.BusinessName}} just received its first payment{{end}}
+{{define "preheader"}}KES {{.Amount}} arrived through Paytrack.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">Your first payment arrived</h1>
+<p style="%%P%%">Congratulations, {{.BusinessName}}! You've just received <strong style="color:%%fg%%;">{{.Amount}}</strong> through Paytrack.</p>
+{{template "button" (dict "URL" .ReceiptURL "Label" "View receipt")}}
+<p style="%%SMALL%%">Want an email like this for every payment? Turn on payment receipts in <a href="{{.AppURL}}/dashboard/settings" style="color:%%primary%%;">Settings &rarr; Notifications</a>.</p>
+{{end}}
+{{define "text"}}{{.BusinessName}} just received its first payment: {{.Amount}}
+
+View receipt: {{.ReceiptURL}}
+Turn on receipts for every payment: {{.AppURL}}/dashboard/settings
+{{end}}

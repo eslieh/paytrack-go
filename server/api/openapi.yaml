@@ -6,10 +6,19 @@ info:
     Multi-tenant M-Pesa STK push routing.
 
     **Auth**: `Authorization: Bearer <token>` where token is either
-    - a dashboard session JWT from `/v1/auth/login` or `/v1/auth/register`, or
+    - a dashboard access token (15 min) from sign-in, or
     - an API key (`ptk_...`) for tenant backends.
 
-    Endpoints marked *user session only* reject API keys with 403.
+    **Dashboard sessions** are revocable. Sign-in responses return a short-lived
+    access token in JSON and set an httpOnly `pt_refresh` cookie; `POST /v1/auth/refresh`
+    exchanges the cookie for a new access token (the cookie rotates on every use).
+    The dashboard calls the API through its own `/api` proxy so cookies are first-party.
+    Password sign-ins on an untrusted device require an emailed 6-digit code
+    (`mfa_required`); `remember_device` sets a 30-day `pt_device` cookie.
+
+    Endpoints marked *user session only* reject API keys with 403. Endpoints marked
+    *verified* reject dashboard sessions whose email is not verified (`email_not_verified`).
+    Sign-in, code, reset and sign-up endpoints are rate limited (429 `rate_limited`).
 
     **Errors** always use `{"error": {"code", "message", "request_id"}}`.
 
@@ -27,10 +36,19 @@ security:
   - bearer: []
 
 paths:
+  /v1/auth/providers:
+    get:
+      tags: [auth]
+      summary: Available sign-in methods
+      security: []
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { password: { type: boolean }, google: { type: boolean } } } } } }
+
   /v1/auth/register:
     post:
       tags: [auth]
-      summary: Create a tenant and its owner user
+      summary: Create a tenant and its owner (unverified) and sign in
+      description: Emails a verification link. Unverified users can sign in but cannot create API keys, channels or payments.
       security: []
       requestBody:
         required: true
@@ -44,14 +62,41 @@ paths:
                 email: { type: string, format: email }
                 password: { type: string, minLength: 10, maxLength: 72 }
       responses:
-        "201": { description: Signed in, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "201": { description: Signed in (sets pt_refresh cookie), content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
 
   /v1/auth/login:
     post:
       tags: [auth]
-      summary: Sign in
+      summary: Sign in with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [email, password], properties: { email: { type: string }, password: { type: string } } }
+      responses:
+        "200":
+          description: A session, or an email-code challenge when two-step applies
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Session"
+                  - type: object
+                    properties:
+                      mfa_required: { type: boolean, const: true }
+                      challenge: { $ref: "#/components/schemas/Challenge" }
+        "401": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+
+  /v1/auth/login/verify:
+    post:
+      tags: [auth]
+      summary: Complete two-step sign-in with the emailed code
+      description: 5 wrong attempts invalidate the challenge; codes expire after 10 minutes.
       security: []
       requestBody:
         required: true
@@ -59,18 +104,131 @@ paths:
           application/json:
             schema:
               type: object
-              required: [email, password]
+              required: [challenge_id, code]
               properties:
-                email: { type: string }
-                password: { type: string }
+                challenge_id: { type: string }
+                code: { type: string, pattern: "^\\d{6}$" }
+                remember_device: { type: boolean, description: Skip codes on this browser for 30 days }
       responses:
         "200": { description: Signed in, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /v1/auth/login/resend:
+    post:
+      tags: [auth]
+      summary: Email a new sign-in code (30s cooldown, max 5 per challenge)
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [challenge_id], properties: { challenge_id: { type: string } } } } }
+      responses:
+        "200": { description: Sent, content: { application/json: { schema: { type: object, properties: { challenge: { $ref: "#/components/schemas/Challenge" } } } } } }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /v1/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Exchange the pt_refresh cookie for a new access token
+      description: Rotates the cookie. 409 `refresh_race` means another tab refreshed at the same moment; retry once.
+      security: []
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
         "401": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke the current session and clear the cookie
+      description: Accepts the access token, or just the refresh cookie when the access token has expired.
+      responses:
+        "204": { description: Signed out }
+
+  /v1/auth/verify-email:
+    post:
+      tags: [auth]
+      summary: Redeem an email verification link (sends the welcome email)
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [token], properties: { token: { type: string } } } } }
+      responses:
+        "200": { description: Verified, content: { application/json: { schema: { type: object, properties: { email_verified: { type: boolean }, email: { type: string } } } } } }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /v1/auth/verify-email/resend:
+    post:
+      tags: [auth]
+      summary: Email a new verification link (user session only)
+      responses:
+        "202": { description: Sent }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /v1/auth/password/forgot:
+    post:
+      tags: [auth]
+      summary: Email a password reset link
+      description: Always returns 202 so it can't be used to discover accounts.
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [email], properties: { email: { type: string } } } } }
+      responses:
+        "202": { description: Accepted }
+
+  /v1/auth/password/reset:
+    post:
+      tags: [auth]
+      summary: Set a new password from a reset link and sign in
+      description: Revokes every session and trusted device, and emails a confirmation.
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [token, password], properties: { token: { type: string }, password: { type: string, minLength: 10 } } } } }
+      responses:
+        "200": { description: Signed in, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /v1/auth/google/start:
+    get:
+      tags: [auth]
+      summary: Begin Google sign-in (browser navigation)
+      description: |
+        302 to Google. Google returns to `<origin>/api/v1/auth/google/callback`, which signs in
+        (302 to `next`), starts sign-up (302 to `/auth/google/complete?token=`), or reports an
+        error (302 to `/auth?error=<code>`).
+      security: []
+      parameters:
+        - { name: next, in: query, schema: { type: string, default: /dashboard } }
+        - { name: origin, in: query, description: Dashboard origin to return to (must be allow-listed), schema: { type: string } }
+      responses:
+        "302": { description: Redirect to Google }
+
+  /v1/auth/google/signup:
+    get:
+      tags: [auth]
+      summary: Pending Google sign-up details
+      security: []
+      parameters: [{ name: token, in: query, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { email: { type: string }, name: { type: string } } } } } }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /v1/auth/google/complete:
+    post:
+      tags: [auth]
+      summary: Finish Google sign-up by naming the business
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [token, business_name], properties: { token: { type: string }, business_name: { type: string } } } } }
+      responses:
+        "201": { description: Signed in, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
 
   /v1/me:
     get:
-      tags: [auth]
-      summary: Current tenant (and user, for sessions)
+      tags: [account]
+      summary: Current tenant, user and linked sign-in methods
       responses:
         "200":
           description: OK
@@ -82,6 +240,153 @@ paths:
                   tenant: { $ref: "#/components/schemas/Tenant" }
                   user: { oneOf: [{ $ref: "#/components/schemas/User" }, { type: "null" }] }
                   auth_kind: { type: string, enum: [user, api_key] }
+                  identities: { type: array, items: { type: object, properties: { provider: { type: string }, email: { type: string }, linked_at: { type: string, format: date-time } } } }
+                  google_enabled: { type: boolean }
+
+  /v1/me/password:
+    post:
+      tags: [account]
+      summary: Change (or, for Google-only accounts, set) the password (user session only)
+      description: Signs out other sessions and emails a confirmation.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [new_password], properties: { current_password: { type: string }, new_password: { type: string, minLength: 10 } } } } }
+      responses:
+        "204": { description: Changed }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /v1/me/two-step:
+    put:
+      tags: [account]
+      summary: Turn email two-step sign-in on or off (user session only)
+      description: Turning it off requires the password and emails an alert.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [enabled], properties: { enabled: { type: boolean }, password: { type: string } } } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { two_step_enabled: { type: boolean } } } } } }
+
+  /v1/me/sessions:
+    get:
+      tags: [account]
+      summary: Active sessions (user session only)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        device: { type: string, example: Chrome on macOS }
+                        ip: { type: string }
+                        auth_method: { type: string }
+                        created_at: { type: string, format: date-time }
+                        last_seen_at: { type: string, format: date-time }
+                        expires_at: { type: string, format: date-time }
+                        current: { type: boolean }
+  /v1/me/sessions/{id}:
+    delete:
+      tags: [account]
+      summary: Sign out one session
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "204": { description: Revoked }
+  /v1/me/sessions/revoke-others:
+    post:
+      tags: [account]
+      summary: Sign out every other session and forget trusted devices
+      responses:
+        "204": { description: Revoked }
+
+  /v1/me/security-events:
+    get:
+      tags: [account]
+      summary: Recent security activity (audit log)
+      parameters: [{ $ref: "#/components/parameters/limit" }]
+      responses:
+        "200": { description: OK }
+
+  /v1/me/identities/google:
+    post:
+      tags: [account]
+      summary: Start linking Google to the signed-in user
+      description: Returns the Google URL to navigate to; Google returns to `/dashboard/settings?google=linked`.
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { origin: { type: string } } } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { url: { type: string } } } } } }
+    delete:
+      tags: [account]
+      summary: Unlink Google (requires a password on the account)
+      responses:
+        "204": { description: Unlinked }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /v1/onboarding:
+    get:
+      tags: [account]
+      summary: Setup checklist computed from the account's real data
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  complete: { type: boolean }
+                  steps:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string, enum: [verify_email, channel, api_key, webhook, first_payment] }
+                        label: { type: string }
+                        done: { type: boolean }
+                        href: { type: string }
+
+  /v1/settings/notifications:
+    get:
+      tags: [settings]
+      summary: Email notification settings (user session only)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/NotificationSettings" } } } }
+    put:
+      tags: [settings]
+      summary: Update notification settings (partial)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payment_receipts: { type: boolean, description: Email the merchant a receipt for every successful payment }
+                receipt_email: { type: string, description: "Where receipts and alerts go; empty = owner email" }
+                webhook_failure_alerts: { type: boolean }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/NotificationSettings" } } } }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/settings/notifications/preview:
+    get:
+      tags: [settings]
+      summary: Render a notification email with sample data and your business name
+      parameters: [{ name: template, in: query, schema: { type: string, enum: [payment_receipt, first_payment, webhook_failing], default: payment_receipt } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { subject: { type: string }, html: { type: string }, text: { type: string } } } } } }
+  /v1/settings/notifications/test-receipt:
+    post:
+      tags: [settings]
+      summary: Email a sample receipt to the receipt recipient
+      responses:
+        "202": { description: Queued, content: { application/json: { schema: { type: object, properties: { sent_to: { type: string } } } } } }
 
   /v1/api-keys:
     get:
@@ -91,7 +396,7 @@ paths:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/APIKeyList" } } } }
     post:
       tags: [api-keys]
-      summary: Create an API key (user session only). The `key` is returned only once.
+      summary: Create an API key (user session only, verified). The `key` is returned only once.
       requestBody:
         required: true
         content:
@@ -132,7 +437,7 @@ paths:
               schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/Channel" } } } }
     post:
       tags: [channels]
-      summary: Register a payment destination
+      summary: Register a payment destination (verified)
       description: |
         STK pushes are always initiated with the platform's Daraja app. A channel only
         decides where the money is routed:
@@ -221,7 +526,7 @@ paths:
   /v1/payments:
     post:
       tags: [payments]
-      summary: Initiate an STK push
+      summary: Initiate an STK push (verified)
       description: |
         Returns 201 with status `pending` once Daraja accepts the push, `failed` if Daraja
         rejected it, or `created` if Daraja's response was ambiguous (the final outcome then
@@ -324,11 +629,34 @@ components:
       properties: { id: { type: string }, name: { type: string }, created_at: { type: string, format: date-time } }
     User:
       type: object
-      properties: { id: { type: string }, email: { type: string }, role: { type: string, enum: [owner] } }
-    Session:
+      properties:
+        id: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [owner] }
+        email_verified: { type: boolean }
+        two_step_enabled: { type: boolean }
+        has_password: { type: boolean, description: false for Google-only accounts }
+        created_at: { type: string, format: date-time }
+        last_login_at: { type: [string, "null"], format: date-time }
+    Challenge:
       type: object
       properties:
-        token: { type: string }
+        id: { type: string, example: chl_06gm… }
+        masked_email: { type: string, example: "e••••@gmail.com" }
+        expires_at: { type: string, format: date-time }
+    NotificationSettings:
+      type: object
+      properties:
+        payment_receipts: { type: boolean }
+        receipt_email: { type: string }
+        receipt_recipient: { type: string, description: Effective address (receipt_email or owner email) }
+        webhook_failure_alerts: { type: boolean }
+        updated_at: { type: string, format: date-time }
+    Session:
+      type: object
+      description: Also sets the httpOnly pt_refresh cookie.
+      properties:
+        token: { type: string, description: Access token (15 minutes) }
         expires_at: { type: string, format: date-time }
         user: { $ref: "#/components/schemas/User" }
         tenant: { $ref: "#/components/schemas/Tenant" }

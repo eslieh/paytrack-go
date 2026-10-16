@@ -70,3 +70,23 @@ type PaymentView struct {
 	UpdatedAt          time.Time         `json:"updated_at"`
 	CompletedAt        *time.Time        `json:"completed_at,omitempty"`
 }
+
+// Email is a request to send one transactional email. Modules hand it to
+// the mail module through their own Mailer port.
+type Email struct {
+	Template string         // template name, e.g. "verify_email"
+	Category string         // security | lifecycle | payments | operations
+	To       string         //
+	ToName   string         //
+	Data     map[string]any // template data
+	// DedupeKey, when set, makes Enqueue idempotent: a second email with the
+	// same key is dropped (e.g. "receipt:pay_123").
+	DedupeKey string
+}
+
+const (
+	EmailSecurity   = "security"
+	EmailLifecycle  = "lifecycle"
+	EmailPayments   = "payments"
+	EmailOperations = "operations"
+)

@@ -26,6 +26,7 @@ type Repository interface {
 	GetByCallbackToken(ctx context.Context, token string) (*domain.Payment, error)
 	Save(ctx context.Context, p *domain.Payment, events []domain.Event) error
 	List(ctx context.Context, f ListFilter) ([]*domain.Payment, error)
+	HasSucceeded(ctx context.Context, tenantID string) (bool, error)
 	// ClaimDueChecks returns payments whose NextCheckAt has passed and pushes
 	// their NextCheckAt forward by lease, so concurrent reconcilers on other
 	// replicas skip them.

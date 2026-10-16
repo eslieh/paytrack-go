@@ -1,31 +1,37 @@
-// Dashboard session persistence. The session is the response of
-// /v1/auth/login or /v1/auth/register: {token, expires_at, user, tenant}.
+// Dashboard session state. The access token lives only in memory; the
+// long-lived refresh token is an httpOnly cookie the browser sends to
+// /api/v1/auth/refresh, so a page reload restores the session without ever
+// exposing a token to JavaScript storage.
 
-export const SESSION_KEY = "paytrack_session";
+let session = null; // {token, expires_at, user, tenant}
+const listeners = new Set();
 
-export function saveSession(session) {
-  try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch {}
+export function setSession(s) {
+  session = s && s.token ? s : null;
+  listeners.forEach((fn) => fn(session));
 }
 
 export function getSession() {
-  let s = null;
-  try { s = JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch { return null; }
-  if (!s?.token) return null;
-  if (s.expires_at && Date.parse(s.expires_at) <= Date.now()) {
-    clearSession();
-    return null;
-  }
-  return s;
+  return session;
 }
 
 export function getToken() {
-  return getSession()?.token || null;
+  if (!session) return null;
+  // Treat tokens about to expire as gone so the client refreshes first.
+  if (session.expires_at && Date.parse(session.expires_at) - Date.now() < 15_000) return null;
+  return session.token;
+}
+
+export function onSessionChange(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
 }
 
 export function clearSession() {
-  try { localStorage.removeItem(SESSION_KEY); } catch {}
+  setSession(null);
   // Remove storage used by older client versions.
   try {
+    localStorage.removeItem("paytrack_session");
     localStorage.removeItem("paytrack_token");
     localStorage.removeItem("paytrack_user");
     document.cookie = "paytrack_token=; Max-Age=0; path=/";

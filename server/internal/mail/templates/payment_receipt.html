@@ -1,0 +1,43 @@
+{{define "subject"}}Payment received: {{.Amount}} from {{.Phone}}{{end}}
+{{define "preheader"}}M-Pesa receipt {{.Receipt}} · {{.Destination}}{{end}}
+{{define "content"}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px 0;"><tr>
+  <td style="font-family:%%font%%;font-size:16px;font-weight:700;color:%%fg%%;"><span style="color:%%success%%;font-size:18px;">&#10004;</span>&nbsp; Payment received</td>
+  <td align="right" style="font-family:%%font%%;font-size:13px;color:%%muted%%;">{{.PaidAt}}</td>
+</tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+  <td width="50%" valign="top" style="padding-right:6px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="%%BOX%%"><tr><td style="font-family:%%font%%;font-size:14px;line-height:1.5;">
+    <div style="%%LABEL%%">Received by</div><div style="font-weight:700;color:%%fg%%;">{{.BusinessName}}</div><div style="color:%%muted%%;">{{.Destination}}</div>
+  </td></tr></table></td>
+  <td width="50%" valign="top" style="padding-left:6px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="%%BOX%%"><tr><td style="font-family:%%font%%;font-size:14px;line-height:1.5;">
+    <div style="%%LABEL%%">M-Pesa receipt</div><div style="font-weight:700;color:%%fg%%;">{{.Receipt}}</div><div style="color:%%muted%%;">Paid {{.PaidAt}}</div>
+  </td></tr></table></td>
+</tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:12px 0;border:1px solid %%border%%;border-radius:12px;border-collapse:separate;overflow:hidden;">
+  <tr style="background:%%surface%%;"><td style="padding:10px 12px;font-family:%%font%%;font-size:12px;color:%%muted%%;">Description</td><td align="right" style="padding:10px 12px;font-family:%%font%%;font-size:12px;color:%%muted%%;">Amount</td></tr>
+  <tr><td style="padding:12px;border-top:1px solid #eef1f7;font-family:%%font%%;font-size:14px;color:%%fg%%;">{{.Description}}{{if .AccountReference}}<div style="font-size:12px;color:%%muted%%;">Account {{.AccountReference}}</div>{{end}}</td><td align="right" style="padding:12px;border-top:1px solid #eef1f7;font-family:%%font%%;font-size:14px;color:%%fg%%;">{{.Amount}}</td></tr>
+  <tr style="background:#fbfcff;"><td style="padding:12px;border-top:1px solid #eef1f7;font-family:%%font%%;font-size:14px;font-weight:700;color:%%fg%%;">Total paid</td><td align="right" style="padding:12px;border-top:1px solid #eef1f7;font-family:%%font%%;font-size:15px;font-weight:800;color:%%fg%%;">{{.Amount}}</td></tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+  <td width="50%" valign="top" style="padding-right:6px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="%%BOX%%"><tr><td style="font-family:%%font%%;font-size:14px;line-height:1.5;color:%%fg%%;">
+    <div style="%%LABEL%%">Paid via</div><div>Safaricom M-Pesa</div><div style="color:%%muted%%;">Phone {{.Phone}}</div>
+  </td></tr></table></td>
+  <td width="50%" valign="top" style="padding-left:6px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="%%BOX%%"><tr><td style="font-family:%%font%%;font-size:14px;line-height:1.5;color:%%fg%%;">
+    <div style="%%LABEL%%">Reference</div><div style="%%MONO%%font-size:12px;word-break:break-all;">{{.PaymentID}}</div>
+  </td></tr></table></td>
+</tr></table>
+{{template "button" (dict "URL" .ReceiptURL "Label" "View in dashboard")}}
+{{end}}
+{{define "footer"}}You're receiving payment receipts for {{.BusinessName}}. Turn them off in <a href="{{.AppURL}}/dashboard/settings" style="color:%%muted%%;">Settings &rarr; Notifications</a>.{{end}}
+{{define "text"}}Payment received: {{.Amount}}
+
+Received by: {{.BusinessName}} ({{.Destination}})
+M-Pesa receipt: {{.Receipt}}
+Paid: {{.PaidAt}}
+Description: {{.Description}}{{if .AccountReference}} (account {{.AccountReference}}){{end}}
+Phone: {{.Phone}}
+Reference: {{.PaymentID}}
+
+View in dashboard: {{.ReceiptURL}}
+Turn off receipts: {{.AppURL}}/dashboard/settings
+{{end}}

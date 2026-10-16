@@ -1,0 +1,23 @@
+{{define "subject"}}Webhook delivery failed for {{.BusinessName}}{{end}}
+{{define "preheader"}}A {{.EventType}} event could not be delivered after {{.Attempts}} attempts.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">A webhook couldn't be delivered</h1>
+<p style="%%P%%">We tried {{.Attempts}} times to deliver a <strong style="color:%%fg%%;">{{.EventType}}</strong> event to your backend and stopped retrying. Your payment data is safe; your system just hasn't been told about it.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="%%BOX%%margin:8px 0 20px 0;"><tr><td style="font-family:%%font%%;font-size:14px;line-height:1.7;color:%%fg%%;">
+  <div style="%%LABEL%%">Endpoint</div><div style="%%MONO%%word-break:break-all;">{{.WebhookURL}}</div>
+  <div style="%%LABEL%%margin-top:8px;">Payment</div><div style="%%MONO%%">{{.PaymentID}}</div>
+  <div style="%%LABEL%%margin-top:8px;">Last error</div><div style="color:%%danger%%;">{{.LastError}}</div>
+</td></tr></table>
+<p style="%%P%%">Fix the endpoint, then redeliver the event from the dashboard.</p>
+{{template "button" (dict "URL" .DeliveriesURL "Label" "View deliveries")}}
+{{end}}
+{{define "footer"}}You're receiving webhook alerts for {{.BusinessName}}. Manage them in <a href="{{.AppURL}}/dashboard/settings" style="color:%%muted%%;">Settings &rarr; Notifications</a>.{{end}}
+{{define "text"}}Webhook delivery failed for {{.BusinessName}}
+
+Event: {{.EventType}} (payment {{.PaymentID}})
+Endpoint: {{.WebhookURL}}
+Attempts: {{.Attempts}}
+Last error: {{.LastError}}
+
+Fix the endpoint, then redeliver: {{.DeliveriesURL}}
+{{end}}

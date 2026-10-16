@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>{{template "subject" .}}</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; padding:0; background:%%bg%%; }
+  a { color:%%primary%%; }
+  @media (max-width:600px) {
+    .container { width:100% !important; }
+    .card { padding:24px 20px !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background:%%bg%%;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{{template "preheader" .}}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:%%bg%%;background-image:linear-gradient(180deg,#e7e9ff 0%,#eff1ff 12%,#f6f7ff 30%,#ffffff 60%);">
+  <tr>
+    <td align="center" style="padding:36px 16px;">
+      <table role="presentation" class="container" width="560" cellpadding="0" cellspacing="0" border="0" style="width:560px;max-width:560px;">
+        <tr>
+          <td style="padding:0 4px 18px 4px;font-family:%%font%%;font-size:22px;font-weight:800;letter-spacing:-0.02em;">
+            <a href="{{.AppURL}}" style="color:%%primary%%;text-decoration:none;">Paytrack</a>
+          </td>
+        </tr>
+        <tr>
+          <td class="card" style="background:#ffffff;border:1px solid %%border%%;border-radius:16px;padding:32px;font-family:%%font%%;color:%%fg%%;box-shadow:0 10px 30px rgba(12,18,37,0.08);">
+            {{template "content" .}}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 4px 0 4px;font-family:%%font%%;font-size:12px;line-height:1.6;color:%%muted%%;">
+            {{block "footer" .}}You're receiving this email because of activity on your Paytrack account.{{end}}
+            <div style="margin-top:8px;">&copy; {{.Year}} Paytrack &middot; M-Pesa payments into your bank account, PayBill or Till</div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
+{{define "button"}}<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td style="border-radius:10px;background:%%primary%%;"><a href="{{.URL}}" style="display:inline-block;padding:12px 22px;font-family:%%font%%;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">{{.Label}} &rarr;</a></td></tr></table>{{end}}
+{{define "linkfallback"}}<p style="%%SMALL%%">If the button doesn't work, paste this link into your browser:<br><a href="{{.}}" style="color:%%primary%%;word-break:break-all;">{{.}}</a></p>{{end}}
+{{define "securityfooter"}}This is a security notice for your Paytrack account. If this wasn't you, <a href="{{.AppURL}}/auth/forgot" style="color:%%muted%%;">reset your password</a> right away.{{end}}
+{{define "device"}}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="%%BOX%%margin:8px 0 20px 0;"><tr><td style="font-family:%%font%%;font-size:14px;line-height:1.7;color:%%fg%%;"><div style="%%LABEL%%">When</div><div>{{.When}}</div><div style="%%LABEL%%margin-top:8px;">Device</div><div>{{.Device}}</div><div style="%%LABEL%%margin-top:8px;">IP address</div><div style="%%MONO%%">{{.IP}}</div></td></tr></table>{{end}}
+{{define "checklist"}}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="%%BOX%%margin:8px 0 4px 0;">{{range .}}<tr><td width="28" valign="top" style="padding:6px 0;font-family:%%font%%;font-size:15px;color:{{if .Done}}%%success%%{{else}}%%muted%%{{end}};">{{if .Done}}&#10003;{{else}}&#9675;{{end}}</td><td style="padding:6px 0;font-family:%%font%%;font-size:14px;line-height:1.5;color:{{if .Done}}%%muted%%{{else}}%%fg%%{{end}};">{{if .Done}}<span style="text-decoration:line-through;">{{.Label}}</span>{{else}}<a href="{{.URL}}" style="color:%%fg%%;text-decoration:none;">{{.Label}}</a>{{end}}</td></tr>{{end}}</table>{{end}}

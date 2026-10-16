@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/eslieh/paytrack-go/server/internal/platform/crypto"
-	"github.com/eslieh/paytrack-go/server/internal/platform/db"
 	"github.com/eslieh/paytrack-go/server/internal/tenant/app"
 	"github.com/eslieh/paytrack-go/server/internal/tenant/domain"
 )
@@ -49,24 +48,63 @@ func (r *Repo) decrypt(b []byte) (string, error) {
 
 // ---------------------------------------------------------------- tenants
 
-func (r *Repo) CreateTenantWithOwner(ctx context.Context, t *domain.Tenant, u *domain.User) error {
+func (r *Repo) CreateTenant(ctx context.Context, t *domain.Tenant) error {
 	secret, err := r.encrypt(t.WebhookSecret)
 	if err != nil {
 		return err
 	}
-	err = db.InTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `INSERT INTO tenant.tenants (id, name, webhook_secret_enc, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $4)`, t.ID, t.Name, secret, t.CreatedAt); err != nil {
-			return err
-		}
-		_, err := tx.Exec(ctx, `INSERT INTO tenant.users (id, tenant_id, email, password_hash, role, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6)`, u.ID, u.TenantID, u.Email, u.PasswordHash, u.Role, u.CreatedAt)
-		return err
-	})
-	if db.IsUniqueViolation(err, "users_email_key") {
-		return app.ErrEmailTaken
-	}
+	_, err = r.pool.Exec(ctx, `INSERT INTO tenant.tenants (id, name, webhook_secret_enc, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $4)`, t.ID, t.Name, secret, t.CreatedAt)
 	return err
+}
+
+func (r *Repo) ListTenantsCreatedBetween(ctx context.Context, from, to time.Time) ([]*domain.Tenant, error) {
+	rows, err := r.pool.Query(ctx, `SELECT id, name, created_at FROM tenant.tenants
+		WHERE created_at >= $1 AND created_at < $2 ORDER BY created_at`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*domain.Tenant
+	for rows.Next() {
+		var t domain.Tenant
+		if err := rows.Scan(&t.ID, &t.Name, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &t)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repo) GetNotificationSettings(ctx context.Context, tenantID string) (domain.NotificationSettings, error) {
+	s := domain.DefaultNotificationSettings(tenantID)
+	err := r.pool.QueryRow(ctx, `SELECT payment_receipts, receipt_email, webhook_failure_alerts, updated_at
+		FROM tenant.notification_settings WHERE tenant_id = $1`, tenantID).
+		Scan(&s.PaymentReceipts, &s.ReceiptEmail, &s.WebhookFailureAlerts, &s.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return s, nil
+	}
+	return s, err
+}
+
+func (r *Repo) SaveNotificationSettings(ctx context.Context, s domain.NotificationSettings) error {
+	_, err := r.pool.Exec(ctx, `INSERT INTO tenant.notification_settings (tenant_id, payment_receipts, receipt_email,
+		webhook_failure_alerts, updated_at) VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (tenant_id) DO UPDATE SET payment_receipts = $2, receipt_email = $3, webhook_failure_alerts = $4, updated_at = $5`,
+		s.TenantID, s.PaymentReceipts, s.ReceiptEmail, s.WebhookFailureAlerts, s.UpdatedAt)
+	return err
+}
+
+func (r *Repo) HasActiveChannel(ctx context.Context, tenantID string) (bool, error) {
+	var ok bool
+	err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tenant.channels WHERE tenant_id = $1 AND active)`, tenantID).Scan(&ok)
+	return ok, err
+}
+
+func (r *Repo) HasActiveAPIKey(ctx context.Context, tenantID string) (bool, error) {
+	var ok bool
+	err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tenant.api_keys WHERE tenant_id = $1 AND revoked_at IS NULL)`, tenantID).Scan(&ok)
+	return ok, err
 }
 
 func (r *Repo) GetTenant(ctx context.Context, id string) (*domain.Tenant, error) {
@@ -98,26 +136,6 @@ func (r *Repo) UpdateWebhook(ctx context.Context, tenantID, url, secret string) 
 		return app.ErrNotFound
 	}
 	return err
-}
-
-// ---------------------------------------------------------------- users
-
-const userCols = `id, tenant_id, email, password_hash, role, created_at`
-
-func scanUser(row pgx.Row) (*domain.User, error) {
-	var u domain.User
-	if err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt); err != nil {
-		return nil, notFound(err)
-	}
-	return &u, nil
-}
-
-func (r *Repo) GetUser(ctx context.Context, id string) (*domain.User, error) {
-	return scanUser(r.pool.QueryRow(ctx, `SELECT `+userCols+` FROM tenant.users WHERE id = $1`, id))
-}
-
-func (r *Repo) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
-	return scanUser(r.pool.QueryRow(ctx, `SELECT `+userCols+` FROM tenant.users WHERE email = $1`, email))
 }
 
 // ---------------------------------------------------------------- API keys

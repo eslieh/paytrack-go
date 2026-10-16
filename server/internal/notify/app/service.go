@@ -53,16 +53,36 @@ type Sender interface {
 	Send(ctx context.Context, url string, headers map[string]string, body []byte) (statusCode int, err error)
 }
 
+// Prefs are a tenant's email preferences and where to send them.
+type Prefs struct {
+	BusinessName         string
+	Recipient            string // receipt email or owner email
+	PaymentReceipts      bool
+	WebhookFailureAlerts bool
+}
+
+type PrefsProvider interface {
+	Prefs(ctx context.Context, tenantID string) (Prefs, error)
+}
+
+type Mailer interface {
+	Enqueue(ctx context.Context, e contracts.Email) error
+}
+
 type Service struct {
 	repo        Repository
 	targets     TargetProvider
 	sender      Sender
+	prefs       PrefsProvider
+	mailer      Mailer
+	appURL      string
 	concurrency int
 	now         func() time.Time
 }
 
-func NewService(repo Repository, targets TargetProvider, sender Sender) *Service {
-	return &Service{repo: repo, targets: targets, sender: sender, concurrency: 16, now: time.Now}
+func NewService(repo Repository, targets TargetProvider, sender Sender, prefs PrefsProvider, mailer Mailer, appURL string) *Service {
+	return &Service{repo: repo, targets: targets, sender: sender, prefs: prefs, mailer: mailer, appURL: appURL,
+		concurrency: 16, now: time.Now}
 }
 
 // Enqueue records a delivery for a payment event (idempotent per event ID).
@@ -122,6 +142,7 @@ func (s *Service) attempt(ctx context.Context, d *domain.Delivery) {
 	}
 	if d.Status == domain.StatusFailed {
 		log.Warn("webhook delivery exhausted retries", "last_error", d.LastError)
+		s.alertWebhookFailed(ctx, d, t.URL)
 	}
 	// Saving after a cancelled ctx would lose the result; the lease then
 	// expires and the delivery is retried (receivers dedupe on event ID).

@@ -185,6 +185,11 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]*domain.Payment, er
 	return s.repo.List(ctx, f)
 }
 
+// HasSucceededPayment reports whether a tenant has received any payment.
+func (s *Service) HasSucceededPayment(ctx context.Context, tenantID string) (bool, error) {
+	return s.repo.HasSucceeded(ctx, tenantID)
+}
+
 // ApplyCallback settles a payment from a Daraja callback. Unknown tokens and
 // mismatched checkout IDs are logged and dropped (returning nil), since
 // retrying them cannot succeed.

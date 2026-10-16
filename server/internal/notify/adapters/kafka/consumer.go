@@ -20,6 +20,9 @@ func PaymentEventHandler(svc *app.Service) pkafka.Handler {
 		if ev.ID == "" || ev.TenantID == "" {
 			return pkafka.Permanent(errors.New("payment event missing id or tenant_id"))
 		}
-		return svc.Enqueue(ctx, ev)
+		if err := svc.Enqueue(ctx, ev); err != nil {
+			return err
+		}
+		return svc.EmailOnPaymentEvent(ctx, ev)
 	}
 }

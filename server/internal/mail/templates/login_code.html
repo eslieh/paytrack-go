@@ -1,0 +1,16 @@
+{{define "subject"}}{{.Code}} is your Paytrack sign-in code{{end}}
+{{define "preheader"}}Your sign-in code is {{.Code}}. It expires in {{.ExpiresMinutes}} minutes.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">Your sign-in code</h1>
+<p style="%%P%%">Enter this code to finish signing in to Paytrack.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 20px 0;"><tr><td style="background:%%surface%%;border:1px solid %%border%%;border-radius:12px;padding:16px 24px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:32px;font-weight:700;letter-spacing:8px;color:%%fg%%;">{{.Code}}</td></tr></table>
+<p style="%%SMALL%%">The code expires in {{.ExpiresMinutes}} minutes. Never share it; Paytrack will never ask you for it.</p>
+{{template "device" .}}
+{{end}}
+{{define "footer"}}{{template "securityfooter" .}}{{end}}
+{{define "text"}}Your Paytrack sign-in code: {{.Code}}
+
+It expires in {{.ExpiresMinutes}} minutes. Never share it.
+
+Requested {{.When}} from {{.Device}} ({{.IP}}). If this wasn't you, reset your password: {{.AppURL}}/auth/forgot
+{{end}}

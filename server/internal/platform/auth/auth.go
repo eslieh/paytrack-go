@@ -20,10 +20,19 @@ const (
 )
 
 type Principal struct {
-	Kind     Kind
-	TenantID string
-	UserID   string // set for KindUser
-	APIKeyID string // set for KindAPIKey
+	Kind          Kind
+	TenantID      string
+	UserID        string // set for KindUser
+	SessionID     string // set for KindUser
+	EmailVerified bool   // set for KindUser
+	APIKeyID      string // set for KindAPIKey
+}
+
+// AuthenticatorFunc adapts a function to Authenticator.
+type AuthenticatorFunc func(ctx context.Context, bearer string) (Principal, error)
+
+func (f AuthenticatorFunc) Authenticate(ctx context.Context, bearer string) (Principal, error) {
+	return f(ctx, bearer)
 }
 
 type Authenticator interface {
@@ -68,6 +77,18 @@ func RequireUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if p, _ := FromContext(r.Context()); p.Kind != KindUser {
 			httpx.WriteError(w, r, errs.Forbidden("user_session_required", "this endpoint requires a dashboard session"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// RequireVerified blocks dashboard sessions whose email is not verified.
+// API keys pass: only verified users can create them.
+func RequireVerified(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p, _ := FromContext(r.Context()); p.Kind == KindUser && !p.EmailVerified {
+			httpx.WriteError(w, r, errs.Forbidden("email_not_verified", "verify your email address to do this"))
 			return
 		}
 		next.ServeHTTP(w, r)

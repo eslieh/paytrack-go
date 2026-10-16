@@ -13,9 +13,8 @@ const SAMPLE = 100; // payments used for the summary tiles
 export default function OverviewPage() {
   const [me, setMe] = useState(null);
   const [channels, setChannels] = useState(null);
-  const [webhook, setWebhook] = useState(null);
-  const [keys, setKeys] = useState(null);
   const [payments, setPayments] = useState(null);
+  const [onboarding, setOnboarding] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -23,9 +22,8 @@ export default function OverviewPage() {
     const settle = (p, set) => p.then((v) => mounted && set(v)).catch((e) => mounted && setError(e));
     settle(api.auth.me(), setMe);
     settle(api.channels.list().then((r) => r.data), setChannels);
-    settle(api.webhook.get(), setWebhook);
-    settle(api.apiKeys.list().then((r) => r.data), setKeys);
     settle(api.payments.list({ limit: SAMPLE }).then((r) => r.data), setPayments);
+    settle(api.onboarding(), setOnboarding);
     return () => { mounted = false; };
   }, []);
 
@@ -34,13 +32,8 @@ export default function OverviewPage() {
   const settledCount = payments?.filter((p) => !["created", "pending"].includes(p.status)).length || 0;
   const successRate = settledCount ? Math.round((succeeded.length / settledCount) * 100) : null;
 
-  const steps = [
-    { done: channels?.some((c) => c.active), label: "Add a channel (bank account, PayBill or Till)", href: "/dashboard/channels" },
-    { done: Boolean(webhook?.url), label: "Set your webhook URL", href: "/dashboard/webhooks" },
-    { done: keys?.some((k) => !k.revoked_at), label: "Create an API key for your backend", href: "/dashboard/api-keys" },
-    { done: payments?.length > 0, label: "Send your first STK push", href: "/dashboard/payments" },
-  ];
-  const setupLoaded = channels && webhook && keys && payments;
+  const steps = onboarding?.steps || [];
+  const doneCount = steps.filter((s) => s.done).length;
 
   return (
     <>
@@ -71,9 +64,15 @@ export default function OverviewPage() {
         </div>
       </section>
 
-      {setupLoaded && steps.some((s) => !s.done) && (
+      {onboarding && !onboarding.complete && (
         <section className={styles.card}>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Get set up</div>
+          <div className={styles.rowBetween} style={{ marginBottom: 8 }}>
+            <div style={{ fontWeight: 700 }}>Get set up</div>
+            <span className={styles.muted} style={{ fontSize: 13 }}>{doneCount} of {steps.length} done</span>
+          </div>
+          <div style={{ height: 6, borderRadius: 6, background: "#eef0fb", marginBottom: 8, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${(doneCount / steps.length) * 100}%`, background: "#6472f3", borderRadius: 6, transition: "width .3s" }} />
+          </div>
           {steps.map((s) => (
             <Link key={s.href} href={s.href} className={styles.kv} style={{ justifyContent: "flex-start", alignItems: "center" }}>
               {s.done ? <CheckCircle2 size={18} color="#127a3a" /> : <Circle size={18} color="#8a91ad" />}

@@ -2,7 +2,6 @@
 package domain
 
 import (
-	"net/mail"
 	"net/url"
 	"regexp"
 	"strings"
@@ -19,19 +18,6 @@ type Tenant struct {
 	CreatedAt     time.Time
 }
 
-type Role string
-
-const RoleOwner Role = "owner"
-
-type User struct {
-	ID           string
-	TenantID     string
-	Email        string
-	PasswordHash string
-	Role         Role
-	CreatedAt    time.Time
-}
-
 // APIKey authenticates a tenant's backend. Only the SHA-256 hash is stored;
 // the plaintext is shown once at creation.
 type APIKey struct {
@@ -43,22 +29,6 @@ type APIKey struct {
 	CreatedAt  time.Time
 	LastUsedAt *time.Time
 	RevokedAt  *time.Time
-}
-
-func NormalizeEmail(s string) (string, error) {
-	s = strings.ToLower(strings.TrimSpace(s))
-	a, err := mail.ParseAddress(s)
-	if err != nil || a.Address != s {
-		return "", errs.Invalid("invalid_email", "email address is invalid")
-	}
-	return s, nil
-}
-
-func ValidatePassword(pw string) error {
-	if len(pw) < 10 || len(pw) > 72 { // bcrypt only uses the first 72 bytes
-		return errs.Invalid("weak_password", "password must be 10-72 characters")
-	}
-	return nil
 }
 
 func ValidateName(field, s string) (string, error) {
@@ -155,4 +125,29 @@ func NewChannel(id, tenantID string, p NewChannelParams, now time.Time) (*Channe
 		return nil, errs.Invalid("invalid_channel_type", `type must be "bank", "paybill" or "till"`)
 	}
 	return c, nil
+}
+
+// ---------------------------------------------------------------- notifications
+
+// NotificationSettings are a tenant's email preferences.
+type NotificationSettings struct {
+	TenantID string
+	// PaymentReceipts emails the merchant a receipt for every successful payment.
+	PaymentReceipts bool
+	// ReceiptEmail overrides where receipts go (default: the owner's email).
+	ReceiptEmail         string
+	WebhookFailureAlerts bool
+	UpdatedAt            time.Time
+}
+
+func DefaultNotificationSettings(tenantID string) NotificationSettings {
+	return NotificationSettings{TenantID: tenantID, WebhookFailureAlerts: true}
+}
+
+// OnboardingStep is one item of the setup checklist.
+type OnboardingStep struct {
+	Key   string
+	Label string
+	Done  bool
+	Path  string
 }

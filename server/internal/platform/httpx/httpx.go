@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"slices"
@@ -55,6 +56,8 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 			status = http.StatusUnauthorized
 		case errs.KindForbidden:
 			status = http.StatusForbidden
+		case errs.KindRateLimited:
+			status = http.StatusTooManyRequests
 		}
 	} else {
 		slog.ErrorContext(r.Context(), "request failed", "err", err, "path", r.URL.Path, "request_id", RequestID(r.Context()))
@@ -185,4 +188,21 @@ func QueryLimit(r *http.Request, def, max int) int {
 // TrimmedQuery returns a trimmed query parameter.
 func TrimmedQuery(r *http.Request, key string) string {
 	return strings.TrimSpace(r.URL.Query().Get(key))
+}
+
+// ClientIP returns the caller's IP. With trustXFF (behind our own proxy) it
+// uses the first X-Forwarded-For entry; it is only used for rate limiting and
+// audit display, never for authorization.
+func ClientIP(r *http.Request, trustXFF bool) string {
+	if trustXFF {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			first, _, _ := strings.Cut(xff, ",")
+			return strings.TrimSpace(first)
+		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

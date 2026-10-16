@@ -1,0 +1,18 @@
+{{define "subject"}}Verify your email for Paytrack{{end}}
+{{define "preheader"}}Confirm your email address to finish setting up {{.BusinessName}} on Paytrack.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">Confirm your email</h1>
+<p style="%%P%%">Thanks for signing up {{.BusinessName}}. Confirm this is your email address to create API keys, channels and payments.</p>
+{{template "button" (dict "URL" .VerifyURL "Label" "Verify email")}}
+<p style="%%SMALL%%">This link expires in {{.ExpiresHours}} hours and can only be used once.</p>
+{{template "linkfallback" .VerifyURL}}
+{{end}}
+{{define "footer"}}You're receiving this because someone signed up for Paytrack with this address. If it wasn't you, you can ignore this email.{{end}}
+{{define "text"}}Confirm your email
+
+Thanks for signing up {{.BusinessName}}. Confirm this is your email address to create API keys, channels and payments:
+
+{{.VerifyURL}}
+
+This link expires in {{.ExpiresHours}} hours and can only be used once. If you didn't sign up for Paytrack, ignore this email.
+{{end}}

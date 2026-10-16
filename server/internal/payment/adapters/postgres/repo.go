@@ -171,3 +171,9 @@ func (r *Repo) ClaimDueChecks(ctx context.Context, now time.Time, limit int, lea
 	}
 	return out, rows.Err()
 }
+
+func (r *Repo) HasSucceeded(ctx context.Context, tenantID string) (bool, error) {
+	var ok bool
+	err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM payment.payments WHERE tenant_id = $1 AND status = 'succeeded')`, tenantID).Scan(&ok)
+	return ok, err
+}

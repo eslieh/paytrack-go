@@ -1,0 +1,12 @@
+{{define "subject"}}Google sign-in linked to your Paytrack account{{end}}
+{{define "preheader"}}You can now sign in with {{.GoogleEmail}}.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">Google sign-in linked</h1>
+<p style="%%P%%">You can now sign in to Paytrack with the Google account <strong>{{.GoogleEmail}}</strong>. Linked {{.When}}.</p>
+{{template "button" (dict "URL" (print .AppURL "/dashboard/settings") "Label" "Manage sign-in methods")}}
+{{end}}
+{{define "footer"}}{{template "securityfooter" .}}{{end}}
+{{define "text"}}Google sign-in was linked to your Paytrack account ({{.GoogleEmail}}) on {{.When}}.
+
+Manage sign-in methods: {{.AppURL}}/dashboard/settings
+{{end}}
