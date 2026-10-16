@@ -1,21 +1,21 @@
 .shell {
-    grid-template-rows: auto 1fr;
-    gap: 8px;
-    min-height: 100svh;
-    display: grid
-;
-    justify-content: center;
+  min-height: 100svh;
+  padding-left: 264px; /* floating sidebar: 12px gap + 240px + 12px gap */
 }
 
 .main {
-    gap: 12px;
-    padding: 16px;
-    display: grid
-;
-    position: relative;
-    margin-top: 10vh;
-    width: min(1040px, 94vw);
-    align-content: start;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 32px 32px 48px;
+}
+
+@media (max-width: 860px) {
+  .shell { padding-left: 0; padding-top: 62px; /* floating mobile top bar */ }
+  .main { padding: 20px 16px 40px; }
 }
 
 .card {
@@ -181,16 +181,6 @@
 }
 
 @media (max-width: 640px) {
-  .main {
-    padding: 12px;
-    gap: 10px;
-    width: 99vw;
-    margin-top: 10vh;
-    padding: 16px;
-    display: grid
-;
-    position: relative;
-  }
   .card {
     border-radius: 14px;
   }

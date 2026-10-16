@@ -1,22 +1,20 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, MailWarning } from "lucide-react";
+import { CreditCard, KeyRound, LayoutDashboard, MailWarning, Settings, Waypoints, Webhook } from "lucide-react";
 import { api } from "../lib/api";
-import Tabs from "./Tabs.jsx";
-import tabStyles from "./tabs.module.css";
+import Sidebar from "./Sidebar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import styles from "../app/dashboard/styles.module.css";
 
 const NAV = [
-  { label: "Overview", href: "/dashboard" },
-  { label: "Payments", href: "/dashboard/payments" },
-  { label: "Channels", href: "/dashboard/channels" },
-  { label: "Webhooks", href: "/dashboard/webhooks" },
-  { label: "API Keys", href: "/dashboard/api-keys" },
-  { label: "Settings", href: "/dashboard/settings" },
+  { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Payments", href: "/dashboard/payments", icon: CreditCard },
+  { label: "Channels", href: "/dashboard/channels", icon: Waypoints },
+  { label: "Webhooks", href: "/dashboard/webhooks", icon: Webhook },
+  { label: "API Keys", href: "/dashboard/api-keys", icon: KeyRound },
+  { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
 // VerifyBanner nudges unverified owners; transacting endpoints reject them.
@@ -40,7 +38,7 @@ function VerifyBanner({ email }) {
 
 // DashboardShell guards every /dashboard page behind a session and renders the nav.
 export default function DashboardShell({ children }) {
-  const { token, loading, logout, user } = useAuth();
+  const { token, loading, logout, user, tenant } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -53,23 +51,12 @@ export default function DashboardShell({ children }) {
 
   return (
     <div className={styles.shell}>
-      <Tabs
+      <Sidebar
         brand="Paytrack"
         items={NAV}
         activeHref={active}
-        actions={
-          <>
-          <Link href="/docs" className={tabStyles.tab} target="_blank">Docs</Link>
-          <button
-            className={tabStyles.tab}
-            onClick={async () => { await logout(); router.replace("/auth"); }}
-            title="Sign out"
-            aria-label="Sign out"
-          >
-            <LogOut size={16} />
-          </button>
-          </>
-        }
+        account={user ? { name: tenant?.name, email: user.email } : null}
+        onSignOut={async () => { await logout(); router.replace("/auth"); }}
       />
       <main className={styles.main}>
         {loading || !token ? <div className={styles.skeletonLine} /> : (
