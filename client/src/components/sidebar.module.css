@@ -22,9 +22,24 @@
 .brand { font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; }
 .sideBrand { padding: 0 10px; }
 
-.nav { display: grid; gap: 4px; }
+.nav { position: relative; display: grid; gap: 4px; }
+
+/* One highlight that slides between items: springy move, slight stretch on the way. */
+.pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  border-radius: 10px;
+  background: var(--primary);
+  box-shadow: 0 6px 16px rgba(100, 114, 243, 0.3);
+  transition: transform 420ms var(--ease-spring), height 300ms var(--ease-out);
+  z-index: 0;
+}
 
 .link {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -33,15 +48,14 @@
   color: #a9afc7;
   font-size: 14px;
   font-weight: 600;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.25s ease, transform 0.25s var(--ease-spring);
 }
-.link:hover { background: #171a2b; color: #eef0f6; }
-.active,
-.active:hover {
-  background: var(--primary);
-  color: #fff;
-  box-shadow: 0 6px 16px rgba(100, 114, 243, 0.25);
-}
+.link:hover { background: rgba(255, 255, 255, 0.06); color: #eef0f6; }
+.link:active { transform: scale(0.97); }
+.link svg { transition: transform 0.3s var(--ease-spring); }
+.link:hover svg { transform: translateX(2px) rotate(-6deg); }
+/* the pill draws the active background; the link just turns white */
+.active, .active:hover { background: transparent; color: #fff; }
 
 .footer { margin-top: auto; display: grid; gap: 8px; }
 

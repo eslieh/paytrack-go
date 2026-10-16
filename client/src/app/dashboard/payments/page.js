@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Plus, RefreshCw } from "lucide-react";
 import styles from "../styles.module.css";
 import { api } from "@/lib/api";
 import { destinationLabel, fmtDate, fmtKES, maskPhone, newIdempotencyKey } from "@/lib/format";
-import { ErrorText, Field, KV, Modal, StatusBadge } from "@/components/ui.jsx";
+import { ErrorText, Field, KV, Modal, PageSkeleton, SkeletonKV, SkeletonRows, StatusBadge, useInView } from "@/components/ui.jsx";
+import { Busy } from "@/components/Busy.jsx";
 
 const STATUSES = ["created", "pending", "succeeded", "failed", "cancelled", "expired"];
 const OPEN = new Set(["created", "pending"]);
@@ -15,7 +16,7 @@ const COLS = { "--cols": "1.6fr 1fr 1fr 1fr 1.3fr" };
 
 export default function PaymentsPage() {
   return (
-    <Suspense fallback={<div className={styles.skeletonLine} />}>
+    <Suspense fallback={<PageSkeleton />}>
       <Payments />
     </Suspense>
   );
@@ -33,6 +34,7 @@ function Payments() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const sentinel = useRef(null);
   const [error, setError] = useState(null);
   const [channels, setChannels] = useState([]);
   const [creating, setCreating] = useState(false);
@@ -77,6 +79,9 @@ function Payments() {
     }
   }
 
+  // Lazy-load the next page as the list's end scrolls into view.
+  useInView(sentinel, loadMore, { enabled: hasMore && !loading && !loadingMore });
+
   const select = (id) => router.replace(id ? `${pathname}?id=${encodeURIComponent(id)}` : pathname, { scroll: false });
   const channelName = (id) => channels.find((c) => c.id === id)?.name || id;
 
@@ -115,7 +120,7 @@ function Payments() {
             <div>Reference</div><div>Amount</div><div>Status</div><div>Channel</div><div>Date</div>
           </div>
           <div className={styles.tbody}>
-            {loading && Array.from({ length: 4 }).map((_, i) => <div key={i} className={styles.trow}><div className={styles.skeletonLine} /></div>)}
+            {loading && <SkeletonRows rows={6} cols={5} />}
             {!loading && rows.length === 0 && <div className={styles.empty}>No payments match.</div>}
             {!loading && rows.map((p) => (
               <div key={p.id} className={`${styles.trow} ${styles.clickRow}`} onClick={() => select(p.id)}>
@@ -132,11 +137,12 @@ function Payments() {
                 <div className={styles.cellSub}>{fmtDate(p.created_at)}</div>
               </div>
             ))}
+            {loadingMore && <SkeletonRows rows={3} cols={5} />}
           </div>
         </div>
-        <div className={styles.loadMoreRow}>
+        <div className={styles.loadMoreRow} ref={sentinel}>
           {hasMore ? (
-            <button className="btn btn-ghost" onClick={loadMore} disabled={loadingMore}>{loadingMore ? "Loading..." : "Load more"}</button>
+            <button className="btn btn-ghost" onClick={loadMore} disabled={loadingMore}>{loadingMore ? <Busy>Loading…</Busy> : "Load more"}</button>
           ) : (
             !loading && rows.length > 0 && <span className={styles.muted}>No more payments</span>
           )}
@@ -217,7 +223,7 @@ function PaymentDetail({ id, channelName, onClose, onUpdate }) {
         </>
       }
     >
-      {!p && !error && <div className={styles.skeletonLine} />}
+      {!p && !error && <SkeletonKV rows={7} />}
       {p && (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -254,7 +260,7 @@ function PaymentDetail({ id, channelName, onClose, onUpdate }) {
                     </div>
                   </span>
                   <button className="btn btn-ghost" style={{ padding: "6px 10px" }} onClick={() => redeliver(d)} disabled={redelivering === d.id}>
-                    {redelivering === d.id ? "Queuing..." : "Redeliver"}
+                    {redelivering === d.id ? <Busy>Queuing…</Busy> : "Redeliver"}
                   </button>
                 </div>
               ))}
@@ -361,7 +367,7 @@ function NewPaymentModal({ channels, onClose, onCreated }) {
         <ErrorText error={error} />
         <div className={styles.modalFooter}>
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Sending..." : "Send prompt"}</button>
+          <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? <Busy>Sending…</Busy> : "Send prompt"}</button>
         </div>
       </form>
     </Modal>

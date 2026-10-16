@@ -7,6 +7,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext.jsx";
 import { ErrorLine, OtpInput, safeNext, useCountdown } from "@/components/auth.jsx";
+import { Busy } from "@/components/Busy.jsx";
+import { startTopLoader } from "@/components/TopLoader.jsx";
 
 export default function VerifyCodePage() {
   return (
@@ -36,7 +38,7 @@ function VerifyCode() {
     setError("");
     try {
       await verifyCode(challengeId, value, remember);
-      router.push(next);
+      startTopLoader(); router.push(next);
     } catch (err) {
       setError(err.message);
       setCode("");
@@ -90,7 +92,7 @@ function VerifyCode() {
           {notice && <div style={{ fontSize: 13, color: "#067647" }}>{notice}</div>}
 
           <button className="btn btn-primary" type="submit" disabled={submitting || code.length !== 6}>
-            {submitting ? "Verifying..." : "Verify and sign in"}
+            {submitting ? <Busy>Verifying…</Busy> : "Verify and sign in"}
           </button>
 
           <div className="row" style={{ marginTop: 4, fontSize: 13 }}>

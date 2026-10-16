@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { api, googleStartUrl } from "@/lib/api";
+import { Busy } from "./Busy.jsx";
 
 export const labelStyle = { fontSize: 13, color: "#555b73", fontWeight: 600 };
 const iconStyle = { position: "absolute", left: 12, top: 12 };
@@ -113,22 +114,41 @@ function GoogleLogo() {
 }
 
 // GoogleButton renders only when the API has Google sign-in configured.
-export function GoogleButton({ next = "/dashboard", label = "Continue with Google" }) {
+export function GoogleButton({ next = "/dashboard", label = "Continue with Google", disabled = false, disabledHint }) {
   const [enabled, setEnabled] = useState(false);
+  // going: the browser is navigating to Google. The page can sit there for a
+  // second or two (API redirect, then Google), so show it's working.
+  const [going, setGoing] = useState(false);
   useEffect(() => {
     api.auth.providers().then((p) => setEnabled(Boolean(p.google))).catch(() => setEnabled(false));
+    // Back button from Google restores this page from bfcache with going=true; reset it.
+    const onShow = (e) => { if (e.persisted) setGoing(false); };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
   }, []);
   if (!enabled) return null;
+  const blocked = disabled || going;
   return (
     <>
       <a
-        href={googleStartUrl(next)}
+        href={disabled ? undefined : googleStartUrl(next)}
+        aria-disabled={blocked}
+        aria-busy={going}
+        title={disabled ? disabledHint : undefined}
+        onClick={(e) => {
+          if (blocked) { e.preventDefault(); return; }
+          setGoing(true);
+        }}
         className="btn"
-        style={{ border: "1px solid #e5e7ef", background: "#fff", color: "#0f1222", width: "100%" }}
+        style={{
+          border: "1px solid #e5e7ef", background: going ? "#f8f9ff" : "#fff", color: "#0f1222", width: "100%",
+          ...(disabled ? { opacity: 0.5, cursor: "not-allowed" } : {}),
+          ...(going ? { cursor: "progress" } : {}),
+        }}
       >
-        <GoogleLogo />
-        {label}
+        {going ? <Busy>Connecting to Google…</Busy> : <><GoogleLogo />{label}</>}
       </a>
+      {disabled && disabledHint && <span style={{ fontSize: 12, color: "#8a91ad", textAlign: "center" }}>{disabledHint}</span>}
       <Divider />
     </>
   );
@@ -209,4 +229,49 @@ export const AUTH_ERRORS = {
 // safeNext only follows same-site relative redirects.
 export function safeNext(next) {
   return next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+}
+
+// CONSENTS are the agreements every new account must accept at sign-up.
+export const CONSENTS = [
+  { id: "terms", href: "/terms", before: "I agree to the", label: "Terms of Service", after: "." },
+  { id: "privacy", href: "/privacy", before: "I've read the", label: "Privacy Policy", after: " and how my data is handled." },
+  { id: "disclaimer", href: "/disclaimer", before: "I understand Paytrack never holds my money, per the", label: "Non-custodial Disclaimer", after: "." },
+];
+
+export const allConsented = (c) => CONSENTS.every((x) => c[x.id]);
+
+// ConsentChecks renders one required checkbox per legal document. The links
+// open in a new tab so a half-filled form isn't lost.
+export function ConsentChecks({ value, onChange }) {
+  const all = allConsented(value);
+  return (
+    <fieldset style={{ border: "1px solid #e9ebf4", borderRadius: 12, padding: "12px 14px", display: "grid", gap: 10, background: "#fbfcff" }}>
+      <legend style={{ fontSize: 12, fontWeight: 700, color: "#657090", padding: "0 6px" }}>Agreements</legend>
+      {CONSENTS.map((c) => (
+        <label key={c.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13, color: "#344054", lineHeight: 1.45, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={Boolean(value[c.id])}
+            onChange={(e) => onChange({ ...value, [c.id]: e.target.checked })}
+            required
+            style={{ marginTop: 2, width: 16, height: 16, accentColor: "#6472f3", colorScheme: "light", flexShrink: 0 }}
+          />
+          <span>
+            {c.before}{" "}
+            <a href={c.href} target="_blank" rel="noopener noreferrer" style={{ color: "#3846f7", fontWeight: 600 }}>{c.label}</a>
+            {c.after}
+          </span>
+        </label>
+      ))}
+      {!all && (
+        <button
+          type="button"
+          onClick={() => onChange(Object.fromEntries(CONSENTS.map((c) => [c.id, true])))}
+          style={{ justifySelf: "start", background: "none", border: 0, padding: 0, fontSize: 12, color: "#657090", textDecoration: "underline", cursor: "pointer" }}
+        >
+          Accept all three
+        </button>
+      )}
+    </fieldset>
+  );
 }

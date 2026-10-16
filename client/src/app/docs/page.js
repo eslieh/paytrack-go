@@ -845,7 +845,7 @@ do {
         <footer className={styles.footer}>
           <span>© {new Date().getFullYear()} Paytrack from Geninworld Limited</span>
           <span>
-            Machine-readable spec: <code>server/api/openapi.yaml</code> (OpenAPI 3.1)
+            <Link href="/terms">Terms</Link> · <Link href="/privacy">Privacy</Link> · <Link href="/disclaimer">Disclaimer</Link>
           </span>
         </footer>
       </main>

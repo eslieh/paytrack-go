@@ -7,6 +7,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext.jsx";
 import { ErrorLine, IconField } from "@/components/auth.jsx";
+import { Busy } from "@/components/Busy.jsx";
+import { Skeleton } from "@/components/ui.jsx";
+import { startTopLoader } from "@/components/TopLoader.jsx";
 
 export default function GoogleCompletePage() {
   return (
@@ -36,7 +39,7 @@ function Complete() {
     setError("");
     try {
       start(await api.auth.googleComplete(token, businessName.trim()));
-      router.push("/dashboard");
+      startTopLoader(); router.push("/dashboard");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -58,7 +61,7 @@ function Complete() {
       <div className="card-header">
         <h1 className="card-title">Name your business</h1>
         <p className="card-subtitle">
-          {info ? <>Signing up as <strong style={{ color: "#0f1222" }}>{info.email}</strong> with Google.</> : "Loading…"}
+          {info ? <>Signing up as <strong style={{ color: "#0f1222" }}>{info.email}</strong> with Google.</> : <Skeleton w={220} h={13} />}
         </p>
       </div>
       <div className="card-body">
@@ -68,7 +71,7 @@ function Complete() {
           </IconField>
           <ErrorLine error={error} />
           <button className="btn btn-primary" type="submit" disabled={submitting || !info}>
-            {submitting ? "Creating..." : "Create account"}
+            {submitting ? <Busy>Creating…</Busy> : "Create account"}
             <ArrowRight size={18} />
           </button>
         </form>

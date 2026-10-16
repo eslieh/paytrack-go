@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PageSkeleton } from "./ui.jsx";
 import { usePathname, useRouter } from "next/navigation";
 import { CreditCard, KeyRound, LayoutDashboard, MailWarning, Settings, Waypoints, Webhook } from "lucide-react";
 import { api } from "../lib/api";
 import Sidebar from "./Sidebar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import styles from "../app/dashboard/styles.module.css";
+import { Busy } from "@/components/Busy.jsx";
+import { startTopLoader } from "@/components/TopLoader.jsx";
 
 const NAV = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
@@ -29,7 +32,7 @@ function VerifyBanner({ email }) {
       <MailWarning size={18} />
       <span style={{ flex: "1 1 260px" }}>Verify <strong>{email}</strong> to create API keys, channels and payments.</span>
       <button className="btn" style={{ padding: "6px 10px", border: "1px solid #fedf89", background: "#fff" }} disabled={state === "sending" || state === "sent"} onClick={resend}>
-        {state === "sent" ? "Link sent" : state === "sending" ? "Sending..." : "Resend link"}
+        {state === "sent" ? "Link sent" : state === "sending" ? <Busy>Sending…</Busy> : "Resend link"}
       </button>
       {!["idle", "sending", "sent"].includes(state) && <span>{state}</span>}
     </div>
@@ -56,10 +59,10 @@ export default function DashboardShell({ children }) {
         items={NAV}
         activeHref={active}
         account={user ? { name: tenant?.name, email: user.email } : null}
-        onSignOut={async () => { await logout(); router.replace("/auth"); }}
+        onSignOut={async () => { startTopLoader(); await logout(); router.replace("/auth"); }}
       />
       <main className={styles.main}>
-        {loading || !token ? <div className={styles.skeletonLine} /> : (
+        {loading || !token ? <PageSkeleton /> : (
           <>
             {user && !user.email_verified && <VerifyBanner email={user.email} />}
             {children}

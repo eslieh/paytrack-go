@@ -1,0 +1,130 @@
+/* Motion system: one set of easings and keyframes for the whole app.
+   Everything here is switched off under prefers-reduced-motion (bottom). */
+
+:root {
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* slight overshoot, playful */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);       /* fast start, soft landing */
+  --dur-fast: 140ms;
+  --dur: 260ms;
+  --dur-slow: 480ms;
+}
+
+/* ---------------------------------------------------------------- buttons */
+.btn {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transition:
+    transform var(--dur) var(--ease-spring),
+    box-shadow var(--dur) var(--ease-out),
+    background-color var(--dur) var(--ease-out),
+    color var(--dur) var(--ease-out),
+    opacity var(--dur) var(--ease-out),
+    filter var(--dur) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:hover:not(:disabled):not([aria-disabled="true"]) { transform: translateY(-1px); }
+.btn:active:not(:disabled):not([aria-disabled="true"]) {
+  transform: translateY(0) scale(0.96);
+  transition-duration: var(--dur-fast);
+}
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(100, 114, 243, 0.4); }
+.btn:disabled, .btn[aria-busy="true"] { cursor: default; }
+.btn:disabled:not([aria-busy="true"]) { opacity: 0.65; }
+
+.btn-primary:hover:not(:disabled) { box-shadow: 0 10px 24px rgba(100, 114, 243, 0.45); filter: saturate(1.1); }
+.btn-ghost:hover:not(:disabled) { background: rgba(100, 114, 243, 0.08); }
+
+/* sheen sweep across primary buttons on hover */
+.btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+.btn-primary:hover:not(:disabled)::after { transform: translateX(120%); transition: transform 700ms var(--ease-out); }
+
+/* ripple injected by <Ripples /> */
+.ripple {
+  position: absolute;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.22;
+  transform: scale(0);
+  pointer-events: none;
+  z-index: -1;
+  animation: ripple 600ms var(--ease-out) forwards;
+}
+@keyframes ripple { to { transform: scale(1); opacity: 0; } }
+
+/* ---------------------------------------------------------------- loading */
+.spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  opacity: 0.9;
+  animation: spin 700ms linear infinite;
+}
+.busy { display: inline-flex; align-items: center; gap: 8px; animation: fade-in var(--dur) var(--ease-out); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------------------------------------------------------------- entrances */
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes rise { from { opacity: 0; transform: translateY(10px) scale(0.99); } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(12px) scale(0.96); } }
+@keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.25); } 100% { transform: scale(1); } }
+@keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+
+/* page content: each top-level block rises in, staggered */
+.page-enter { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.page-enter > * { animation: rise var(--dur-slow) var(--ease-out) both; }
+.page-enter > :nth-child(2) { animation-delay: 50ms; }
+.page-enter > :nth-child(3) { animation-delay: 100ms; }
+.page-enter > :nth-child(4) { animation-delay: 150ms; }
+.page-enter > :nth-child(5) { animation-delay: 200ms; }
+.page-enter > :nth-child(n + 6) { animation-delay: 240ms; }
+
+/* auth card springs in, and its contents cross-fade between auth pages */
+.centered-screen > .card { animation: pop-in var(--dur-slow) var(--ease-spring) both; }
+.auth-enter { animation: rise var(--dur) var(--ease-out) both; }
+
+/* checkboxes give a little bounce when ticked */
+input[type="checkbox"]:checked { animation: pop 280ms var(--ease-spring); }
+
+/* copy-button icon swap */
+.icon-pop { display: inline-flex; animation: pop 320ms var(--ease-spring); }
+
+/* ---------------------------------------------------------------- reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+  .spinner { animation: spin 1.4s linear infinite !important; } /* keep the spinner: it's information, not decoration */
+  .btn-primary::after { display: none; }
+}
+
+/* ---------------------------------------------------------------- top loader */
+.toploader {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 3px;
+  z-index: 1000;
+  pointer-events: none;
+}
+.toploader-bar {
+  height: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #6472f3, #9aa3ff, #6472f3);
+  background-size: 200% 100%;
+  box-shadow: 0 0 10px rgba(100, 114, 243, 0.7), 0 0 4px rgba(100, 114, 243, 0.5);
+  border-radius: 0 3px 3px 0;
+  transition: transform 200ms var(--ease-out), opacity 300ms ease 120ms;
+  animation: shimmer 1.2s linear infinite;
+}

@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Eye, EyeOff, RefreshCw } from "lucide-react";
 import styles from "../styles.module.css";
 import { api } from "@/lib/api";
 import { fmtDate, maskSecret } from "@/lib/format";
-import { CopyButton, ErrorText, Field, Modal, StatusBadge } from "@/components/ui.jsx";
+import { CopyButton, ErrorText, Field, Modal, SkeletonRows, StatusBadge, useInView } from "@/components/ui.jsx";
+import { Busy } from "@/components/Busy.jsx";
 
 const DELIVERY_STATUSES = ["pending", "delivering", "delivered", "failed"];
 
@@ -100,7 +101,7 @@ function EndpointCard() {
           required
         />
         <button className="btn btn-primary" type="submit" disabled={saving || !webhook || url.trim() === (webhook?.url || "")}>
-          {saving ? "Saving..." : saved ? "Saved" : "Save"}
+          {saving ? <Busy>Saving…</Busy> : saved ? "Saved" : "Save"}
         </button>
       </form>
 
@@ -139,7 +140,7 @@ function EndpointCard() {
           footer={
             <>
               <button className="btn btn-ghost" onClick={() => setConfirmRotate(false)} disabled={rotating}>Cancel</button>
-              <button className="btn btn-primary" onClick={rotate} disabled={rotating}>{rotating ? "Rotating..." : "Rotate secret"}</button>
+              <button className="btn btn-primary" onClick={rotate} disabled={rotating}>{rotating ? <Busy>Rotating…</Busy> : "Rotate secret"}</button>
             </>
           }
         >
@@ -159,6 +160,7 @@ function DeliveriesCard() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const sentinel = useRef(null);
   const [redelivering, setRedelivering] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [error, setError] = useState(null);
@@ -194,6 +196,9 @@ function DeliveriesCard() {
     }
   }
 
+  // Lazy-load the next page as the list's end scrolls into view.
+  useInView(sentinel, loadMore, { enabled: hasMore && !loading && !loadingMore });
+
   async function redeliver(d) {
     setRedelivering(d.id);
     setError(null);
@@ -225,7 +230,7 @@ function DeliveriesCard() {
           <div>Event</div><div>Status</div><div>Last attempt</div><div>Created</div><div />
         </div>
         <div className={styles.tbody}>
-          {loading && <div className={styles.empty}>Loading...</div>}
+          {loading && <SkeletonRows rows={4} cols={4} />}
           {!loading && rows.length === 0 && <div className={styles.empty}>No deliveries yet.</div>}
           {!loading && rows.map((d) => (
             <div key={d.id} className={`${styles.trow} ${styles.clickRow}`} onClick={() => setViewing(d)}>
@@ -248,15 +253,16 @@ function DeliveriesCard() {
                   onClick={(e) => { e.stopPropagation(); redeliver(d); }}
                   disabled={redelivering === d.id}
                 >
-                  {redelivering === d.id ? "Queuing..." : "Redeliver"}
+                  {redelivering === d.id ? <Busy>Queuing…</Busy> : "Redeliver"}
                 </button>
               </div>
             </div>
           ))}
         </div>
       </div>
-      <div className={styles.loadMoreRow}>
-        {hasMore && <button className="btn btn-ghost" onClick={loadMore} disabled={loadingMore}>{loadingMore ? "Loading..." : "Load more"}</button>}
+      {loadingMore && <div className={styles.tbody} style={{ marginTop: 8 }}><SkeletonRows rows={2} cols={4} /></div>}
+      <div className={styles.loadMoreRow} ref={sentinel}>
+        {hasMore && <button className="btn btn-ghost" onClick={loadMore} disabled={loadingMore}>{loadingMore ? <Busy>Loading…</Busy> : "Load more"}</button>}
       </div>
       <ErrorText error={error} />
 

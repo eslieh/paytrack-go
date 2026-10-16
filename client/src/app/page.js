@@ -224,6 +224,9 @@ PayTrack-Signature: t=1760512345,v1=5f2b…
         <div className={styles.footerLinks}>
           <Link href="/docs">Docs</Link>
           <a href="#features">Features</a>
+          <Link href="/terms">Terms</Link>
+          <Link href="/privacy">Privacy</Link>
+          <Link href="/disclaimer">Disclaimer</Link>
           <Link href="/auth">Sign in</Link>
         </div>
       </footer>

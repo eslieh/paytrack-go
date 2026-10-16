@@ -7,6 +7,7 @@ import { CheckCircle2, Download } from "lucide-react";
 import { api } from "@/lib/api";
 import { destinationLabel, fmtDate, fmtKES } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext.jsx";
+import { Skeleton } from "@/components/ui.jsx";
 
 const box = { border: "1px solid #e9ebf4", borderRadius: 12, padding: 12 };
 const muted = { color: "#657090" };
@@ -38,11 +39,35 @@ function Receipt() {
   else if (error) message = error;
   else if (payment && payment.status !== "succeeded") message = `This payment is ${payment.status}; receipts are only issued for successful payments.`;
 
-  if (message || !payment) {
+  if (!message && !payment) {
+    return (
+      <div style={{ minHeight: "100svh", display: "grid", placeItems: "center", padding: 24 }} role="status" aria-label="Loading receipt">
+        <div style={{ width: "100%", maxWidth: 720, background: "#fff", border: "1px solid #e9ebf4", borderRadius: 16, padding: 16, display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 12, borderBottom: "1px solid #eef1f7" }}>
+            <Skeleton w={160} h={18} />
+            <Skeleton w={110} h={38} r={10} />
+          </div>
+          <div className="receipt-grid-two" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {[0, 1].map((i) => (
+              <div key={i} style={{ ...box, display: "grid", gap: 8 }}>
+                <Skeleton w="35%" h={10} /><Skeleton w="65%" h={14} /><Skeleton w="50%" h={12} />
+              </div>
+            ))}
+          </div>
+          <Skeleton h={130} r={12} />
+          <div className="receipt-grid-two" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Skeleton h={72} r={12} /><Skeleton h={72} r={12} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (message) {
     return (
       <div style={{ minHeight: "100svh", display: "grid", placeItems: "center", padding: 24 }}>
         <div style={{ ...box, background: "#fff", padding: 24, textAlign: "center", maxWidth: 420 }}>
-          <div style={{ marginBottom: 12 }}>{message || "Loading receipt..."}</div>
+          <div style={{ marginBottom: 12 }}>{message}</div>
           {message && <Link className="btn btn-primary" href={token ? "/dashboard/payments" : `/auth?next=${encodeURIComponent(`/receipt?id=${id || ""}`)}`}>{token ? "Back to payments" : "Sign in"}</Link>}
         </div>
       </div>
@@ -86,11 +111,11 @@ function Receipt() {
                 {payment.description}
                 {payment.destination_type !== "till" && <div style={{ ...muted, fontSize: 12 }}>Account {payment.account_reference}</div>}
               </div>
-              <div style={{ textAlign: "right" }}>{fmtKES(payment.amount)}</div>
+              <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>{fmtKES(payment.amount)}</div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", padding: 12, borderTop: "1px solid #eef1f7", background: "#fbfcff" }}>
               <div style={{ fontWeight: 700 }}>Total paid</div>
-              <div style={{ fontWeight: 800, textAlign: "right" }}>{fmtKES(payment.amount)}</div>
+              <div style={{ fontWeight: 800, textAlign: "right", whiteSpace: "nowrap" }}>{fmtKES(payment.amount)}</div>
             </div>
           </div>
 

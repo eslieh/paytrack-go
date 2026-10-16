@@ -5,7 +5,8 @@ import { Plus } from "lucide-react";
 import styles from "../styles.module.css";
 import { api } from "@/lib/api";
 import { CHANNEL_TYPE_LABEL, destinationLabel, fmtDate } from "@/lib/format";
-import { ErrorText, Field, Modal, StatusBadge } from "@/components/ui.jsx";
+import { ErrorText, Field, Modal, Skeleton, SkeletonRows, StatusBadge } from "@/components/ui.jsx";
+import { Busy } from "@/components/Busy.jsx";
 
 export default function ChannelsPage() {
   const [channels, setChannels] = useState(null);
@@ -53,7 +54,7 @@ export default function ChannelsPage() {
             <div>Name</div><div>Type</div><div>Destination</div><div>Status</div><div>Created</div><div />
           </div>
           <div className={styles.tbody}>
-            {!channels && !error && <div className={styles.empty}>Loading...</div>}
+            {!channels && !error && <SkeletonRows rows={3} cols={5} />}
             {channels?.length === 0 && <div className={styles.empty}>No channels yet. Add a bank account, PayBill or Till to start collecting.</div>}
             {channels?.map((c) => (
               <div key={c.id} className={styles.trow}>
@@ -156,10 +157,12 @@ function NewChannelModal({ onClose, onCreated }) {
           {form.type === "bank" && (
             <>
               <Field label="Bank">
-                <select className={styles.select} value={form.bank_code} onChange={set("bank_code")} required disabled={!banks}>
-                  <option value="" disabled>{banks ? "Choose a bank" : "Loading banks..."}</option>
-                  {banks?.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
-                </select>
+                {banks ? (
+                  <select className={styles.select} value={form.bank_code} onChange={set("bank_code")} required>
+                    <option value="" disabled>Choose a bank</option>
+                    {banks.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+                  </select>
+                ) : <Skeleton h={44} r={10} />}
               </Field>
               <Field label="Account number" hint="The bank account credited, up to 12 characters">
                 <input className="input" maxLength={12} value={form.account_number} onChange={set("account_number")} required />
@@ -182,7 +185,7 @@ function NewChannelModal({ onClose, onCreated }) {
         <ErrorText error={error} />
         <div className={styles.modalFooter}>
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Saving..." : "Add channel"}</button>
+          <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? <Busy>Saving…</Busy> : "Add channel"}</button>
         </div>
       </form>
     </Modal>

@@ -6,6 +6,8 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext.jsx";
 import { AUTH_ERRORS, ErrorLine, GoogleButton, IconField, PasswordInput, safeNext } from "@/components/auth.jsx";
+import { Busy } from "@/components/Busy.jsx";
+import { startTopLoader } from "@/components/TopLoader.jsx";
 
 export default function LoginPage() {
   return (
@@ -37,10 +39,10 @@ function Login() {
       const res = await login(email.trim(), password);
       if (res.challenge) {
         const q = new URLSearchParams({ c: res.challenge.id, e: res.challenge.masked_email, next });
-        router.push(`/auth/verify-code?${q}`);
+        startTopLoader(); router.push(`/auth/verify-code?${q}`);
         return;
       }
-      router.push(next);
+      startTopLoader(); router.push(next);
     } catch (err) {
       setError(err.message || "Sign in failed");
     } finally {
@@ -76,7 +78,7 @@ function Login() {
           <ErrorLine error={error} />
 
           <button className="btn btn-primary" type="submit" disabled={submitting}>
-            {submitting ? "Signing in..." : "Sign in"}
+            {submitting ? <Busy>Signing in…</Busy> : "Sign in"}
             <ArrowRight size={18} />
           </button>
 
@@ -85,6 +87,12 @@ function Login() {
             <Link href="/auth/register" className="btn btn-ghost" style={{ padding: 0 }}>Create one</Link>
           </div>
         </form>
+        <p style={{ marginTop: 16, fontSize: 12, color: "#8a91ad", lineHeight: 1.5, textAlign: "center" }}>
+          Continuing with Google for the first time creates an account, which means you agree to the{" "}
+          <Link href="/terms" style={{ color: "#3846f7" }}>Terms</Link>,{" "}
+          <Link href="/privacy" style={{ color: "#3846f7" }}>Privacy Policy</Link> and{" "}
+          <Link href="/disclaimer" style={{ color: "#3846f7" }}>Disclaimer</Link>.
+        </p>
       </div>
     </div>
   );

@@ -102,6 +102,7 @@ a {
 }
 
 .btn {
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -130,8 +131,8 @@ a {
   justify-content: space-between;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+/* The app only has a light theme, so keep native controls (buttons, selects,
+   checkboxes) light even when the OS is in dark mode. */
+html {
+  color-scheme: light;
 }

@@ -5,6 +5,7 @@ import { Mail, ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { ErrorLine, IconField, SuccessLine } from "@/components/auth.jsx";
+import { Busy } from "@/components/Busy.jsx";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -44,7 +45,7 @@ export default function ForgotPasswordPage() {
               <input id="email" type="email" autoComplete="email" className="input" placeholder="you@example.com" style={{ paddingLeft: 38 }} value={email} onChange={(e) => setEmail(e.target.value)} required />
             </IconField>
             <ErrorLine error={error} />
-            <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting ? "Sending..." : "Send reset link"}</button>
+            <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting ? <Busy>Sending…</Busy> : "Send reset link"}</button>
             <Link href="/auth" className="btn btn-ghost" style={{ padding: 0, justifyContent: "flex-start", fontSize: 13 }}>
               <ArrowLeft size={16} /> Back to sign in
             </Link>

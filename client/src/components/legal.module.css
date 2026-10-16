@@ -1,0 +1,86 @@
+.page { min-height: 100svh; background: #ffffff; color: #0f1222; }
+
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 14px 24px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid #e9ebf4;
+}
+.brand { font-weight: 800; font-size: 1.2rem; letter-spacing: -0.02em; }
+.brand span { color: var(--primary); }
+.docNav { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+.docNav a { padding: 7px 12px; border-radius: 10px; font-size: 14px; font-weight: 600; color: #475467; }
+.docNav a:hover { background: #f1f3fb; }
+.docNav .docActive { background: #eef1ff; color: #3846f7; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 760px);
+  gap: 56px;
+  justify-content: center;
+  padding: 40px 24px 64px;
+}
+
+.toc { position: sticky; top: 84px; align-self: start; display: grid; gap: 2px; font-size: 13.5px; }
+.tocTitle { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #657090; padding: 0 8px 8px; }
+.toc a { display: flex; gap: 10px; padding: 6px 8px; border-radius: 8px; color: #344054; }
+.toc a:hover { background: #f1f3fb; }
+.tocNum { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #98a1bf; font-size: 12px; }
+
+.main { min-width: 0; font-size: 15.5px; line-height: 1.7; color: #1f2340; }
+.kicker { color: var(--primary); font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.main h1 { font-size: clamp(30px, 4vw, 40px); line-height: 1.15; letter-spacing: -0.03em; margin: 8px 0 12px; color: #0f1222; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13px; color: #657090; margin-bottom: 28px; }
+
+.tldr { background: #0f1222; color: #e6e8f5; border-radius: 14px; overflow: hidden; margin-bottom: 40px; box-shadow: 0 12px 30px rgba(12, 18, 37, 0.12); }
+.tldrHead { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #171a2b; border-bottom: 1px solid #23284a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: #a9afc7; }
+.dots { display: inline-flex; gap: 6px; }
+.dots i { width: 10px; height: 10px; border-radius: 999px; background: #2a2f50; display: block; }
+.tldr ul { list-style: none; padding: 16px 18px 6px; margin: 0; display: grid; gap: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.6; }
+.tldr li { position: relative; padding-left: 20px; }
+.tldr li::before { content: ">"; position: absolute; left: 0; color: #7d87ff; font-weight: 700; }
+.tldrNote { padding: 0 18px 14px; margin: 0; font-size: 12px; color: #8a91ad; }
+
+.section { scroll-margin-top: 84px; padding-top: 8px; margin-bottom: 36px; }
+.section h2 { display: flex; align-items: baseline; gap: 12px; font-size: 21px; letter-spacing: -0.02em; margin: 0 0 12px; color: #0f1222; }
+.num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: var(--primary); font-weight: 700; }
+.section h3 { font-size: 16px; margin: 20px 0 6px; color: #0f1222; }
+.section p { margin: 0 0 12px; }
+.section ul, .section ol { margin: 0 0 12px 20px; display: grid; gap: 6px; }
+.section a, .footer a { color: #3846f7; font-weight: 600; }
+.section a:hover, .footer a:hover { text-decoration: underline; }
+.main code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.86em;
+  background: #f1f3fb;
+  border: 1px solid #e6e9f6;
+  border-radius: 6px;
+  padding: 1px 5px;
+  color: #19203a;
+}
+.tldr code { background: #2a2f50; border-color: #2a2f50; color: #fff; }
+
+.footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; border-top: 1px solid #e9ebf4; padding-top: 24px; margin-top: 48px; font-size: 13px; color: #657090; }
+.footerLinks { display: flex; gap: 16px; flex-wrap: wrap; }
+
+/* shared content blocks, exported for the pages via :global-free class names */
+.table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #e9ebf4; border-radius: 12px; overflow: hidden; font-size: 14px; margin: 8px 0 16px; display: block; overflow-x: auto; }
+.table th { text-align: left; background: #f9faff; color: #657090; font-weight: 700; font-size: 12px; padding: 10px 12px; }
+.table td { padding: 10px 12px; border-top: 1px solid #f1f3fb; vertical-align: top; }
+.callout { border-radius: 12px; padding: 14px 16px; font-size: 14.5px; line-height: 1.6; border: 1px solid #e3e6fb; background: #f5f6ff; color: #2a3160; margin: 12px 0 16px; }
+.warn { background: #fff8eb; border-color: #fde7bf; color: #7a4a00; }
+.flow { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.6; background: #0f1222; color: #e6e8f5; border-radius: 12px; padding: 16px; overflow-x: auto; white-space: pre; margin: 8px 0 16px; }
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 24px 16px 48px; }
+  .toc { position: static; border: 1px solid #e9ebf4; border-radius: 12px; padding: 12px; }
+  .top { padding: 12px 16px; gap: 10px; }
+  .docNav { margin-left: 0; }
+}

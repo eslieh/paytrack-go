@@ -1,6 +1,10 @@
 import { Figtree } from "next/font/google";
 import "./globals.css";
+import "./motion.css";
 import { AuthProvider } from "../context/AuthContext.jsx";
+import { Suspense } from "react";
+import Ripples from "../components/Ripples.jsx";
+import TopLoader from "../components/TopLoader.jsx";
 
 const figtree = Figtree({
   variable: "--font-figtree",
@@ -32,9 +36,12 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body className={`${figtree.variable}`}>
+        {/* useSearchParams in TopLoader needs a Suspense boundary */}
+        <Suspense fallback={null}><TopLoader /></Suspense>
         <AuthProvider>
           {children}
         </AuthProvider>
+        <Ripples />
       </body>
     </html>
   );

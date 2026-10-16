@@ -5,7 +5,9 @@ import { Mail, Lock, Building2, ArrowRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext.jsx";
-import { ErrorLine, GoogleButton, IconField, PasswordInput, StrengthMeter } from "@/components/auth.jsx";
+import { allConsented, ConsentChecks, ErrorLine, GoogleButton, IconField, PasswordInput, StrengthMeter } from "@/components/auth.jsx";
+import { Busy } from "@/components/Busy.jsx";
+import { startTopLoader } from "@/components/TopLoader.jsx";
 
 export default function RegisterPage() {
   const [businessName, setBusinessName] = useState("");
@@ -16,6 +18,8 @@ export default function RegisterPage() {
   const router = useRouter();
   const { signup, token, loading } = useAuth();
   const [justSignedUp, setJustSignedUp] = useState(false);
+  const [consent, setConsent] = useState({});
+  const consented = allConsented(consent);
 
   useEffect(() => {
     if (!loading && token && !justSignedUp) router.replace("/dashboard");
@@ -23,12 +27,16 @@ export default function RegisterPage() {
 
   async function onSubmit(e) {
     e.preventDefault();
+    if (!consented) {
+      setError("Accept the Terms, Privacy Policy and Disclaimer to create an account.");
+      return;
+    }
     setSubmitting(true);
     setError("");
     try {
       setJustSignedUp(true);
       await signup(businessName.trim(), email.trim(), password);
-      router.push("/auth/check-email");
+      startTopLoader(); router.push("/auth/check-email");
     } catch (err) {
       setJustSignedUp(false);
       setError(err.message || "Sign up failed");
@@ -45,7 +53,7 @@ export default function RegisterPage() {
       </div>
       <div className="card-body">
         <form className="stack" onSubmit={onSubmit}>
-          <GoogleButton label="Sign up with Google" />
+          <GoogleButton label="Sign up with Google" disabled={!consented} disabledHint="Tick the agreements below to sign up with Google." />
 
           <IconField id="business_name" label="Business name" icon={Building2}>
             <input id="business_name" className="input" placeholder="Acme Shop" maxLength={100} autoComplete="organization" style={{ paddingLeft: 38 }} value={businessName} onChange={(e) => setBusinessName(e.target.value)} required />
@@ -60,10 +68,12 @@ export default function RegisterPage() {
           </IconField>
           <StrengthMeter password={password} />
 
+          <ConsentChecks value={consent} onChange={setConsent} />
+
           <ErrorLine error={error} />
 
-          <button className="btn btn-primary" type="submit" disabled={submitting}>
-            {submitting ? "Creating..." : "Create account"}
+          <button className="btn btn-primary" type="submit" disabled={submitting || !consented} style={!consented ? { opacity: 0.6, cursor: "not-allowed" } : undefined}>
+            {submitting ? <Busy>Creating…</Busy> : "Create account"}
             <ArrowRight size={18} />
           </button>
 

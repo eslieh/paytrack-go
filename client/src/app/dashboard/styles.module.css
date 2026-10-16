@@ -5,6 +5,8 @@
 
 .main {
   display: grid;
+  /* minmax(0, 1fr): children (wide tables, code) must not stretch the column past the viewport */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-content: start;
   width: 100%;
@@ -23,6 +25,7 @@
   border: 1px solid #e9ebf4;
   border-radius: 16px;
   padding: 16px;
+  transition: box-shadow var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out);
 }
 
 .rowBetween {
@@ -175,7 +178,9 @@
 /* Skeleton */
 .skeletonLine {
   height: 14px;
-  background: #eef1ff;
+  background: linear-gradient(90deg, #eef1ff 25%, #f7f8ff 50%, #eef1ff 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
   border-radius: 6px;
   margin-bottom: 8px;
 }
@@ -188,15 +193,35 @@
     border-radius: 16px;
   }
   .tbody { display: grid; font-size: 13px; }
-  .table { --min-w: 680px; }
+  /* Tables become stacked cards: the first cell is the title, the rest flow into two columns. */
+  .table { --min-w: 0; overflow: visible; border: 0; border-radius: 0; display: grid; gap: 8px; }
+  .thead { display: none; }
+  .tbody { gap: 8px; }
+  .trow {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px 12px;
+    padding: 12px;
+    border: 1px solid #e9ebf4;
+    border-radius: 12px;
+    background: #fff;
+  }
+  .trow > :first-child { grid-column: 1 / -1; }
+  .trow > :empty { display: none; }
+  .empty { border: 1px dashed #e3e6f3; border-radius: 12px; }
+  .rowBetween { flex-wrap: wrap; }
+  .filters > * { flex-basis: 100%; }
+  .modal { padding: 16px; }
+  .modalFooter > * { flex: 1 1 auto; }
   .formGrid, .summaryGrid { grid-template-columns: 1fr; }
   .h2 {
     letter-spacing: -.02em;
-    font-size: 13px;
-}
-.mono {
-    font-size: 10px;
-}
+    font-size: 20px;
+  }
+  .mono {
+    font-size: 12px;
+  }
+  /* Row actions (Revoke, Deactivate, Redeliver) get their own line in the stacked card. */
+  .trow > div[style*="text-align: right"] { grid-column: 1 / -1; }
 }
 
 /* Status + feedback */
@@ -204,7 +229,9 @@
 .error { color: #b42318; font-size: 13px; margin-top: 8px; }
 .notice { background: #f5f6ff; border: 1px solid #e3e6fb; border-radius: 12px; padding: 12px; font-size: 13px; color: #344054; }
 .clickRow { cursor: pointer; }
+.clickRow { transition: background-color var(--dur-fast) var(--ease-out), transform var(--dur) var(--ease-spring); }
 .clickRow:hover { background: #fafbff; }
+.clickRow:active { transform: scale(0.995); }
 .cellTitle { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cellSub { color: #657090; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty { padding: 24px 10px; text-align: center; color: #657090; border-top: 1px solid #f1f3fb; }
@@ -226,7 +253,37 @@
 .kv > span:last-child { text-align: right; word-break: break-all; }
 
 /* Modal */
-.overlay { position: fixed; inset: 0; background: rgba(17, 19, 38, 0.48); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
-.modal { background: #fff; border-radius: 14px; padding: 20px; width: min(560px, 100%); max-height: 90svh; overflow-y: auto; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); }
+.overlay { position: fixed; inset: 0; background: rgba(17, 19, 38, 0.48); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; animation: fade-in var(--dur) var(--ease-out); }
+.modal { background: #fff; border-radius: 14px; padding: 20px; width: min(560px, 100%); max-height: 90svh; overflow-y: auto; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); animation: pop-in var(--dur-slow) var(--ease-spring); }
 .modalTitle { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
 .modalFooter { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+
+/* Overview hero: channel card + stats */
+.hero { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.heroStats { display: grid; gap: 8px; align-content: start; }
+.heroStats .summaryCard { padding: 16px; }
+.heroStats .summaryValue { font-size: 22px; }
+@media (max-width: 1000px) {
+  .hero { grid-template-columns: minmax(0, 1fr); }
+  .heroStats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .heroStats { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------------------------------------------------------------- loading */
+.skeleton {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 100%;
+  background: linear-gradient(90deg, #eef1ff 25%, #f7f8ff 50%, #eef1ff 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+/* Each row is its own grid, so without min-width: 0 a long cell widens its own
+   column and the columns stop lining up from row to row. */
+.thead > *, .trow > * { min-width: 0; }
+
+/* rows fade in as real data replaces skeletons */
+.tbody > .trow { animation: fade-in var(--dur) var(--ease-out) both; }

@@ -7,8 +7,9 @@ import styles from "../styles.module.css";
 import { api } from "@/lib/api";
 import { fmtDate } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext.jsx";
-import { ErrorText, Field, KV, Modal } from "@/components/ui.jsx";
+import { ErrorText, Field, KV, Modal, Skeleton, SkeletonKV } from "@/components/ui.jsx";
 import { AUTH_ERRORS, PasswordInput, StrengthMeter } from "@/components/auth.jsx";
+import { Busy } from "@/components/Busy.jsx";
 
 export default function SettingsPage() {
   return (
@@ -132,9 +133,19 @@ function SecurityCard({ me, onChange }) {
     try { await api.account.setTwoStep(true, ""); await onChange(); } catch (e) { setError(e); } finally { setBusy(false); }
   }
 
+  // linking: waiting on the API, then on the redirect to Google. Reset if the
+  // page comes back from bfcache (user pressed Back on Google's page).
+  const [linking, setLinking] = useState(false);
+  useEffect(() => {
+    const onShow = (e) => { if (e.persisted) setLinking(false); };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
+
   async function linkGoogle() {
     setError(null);
-    try { window.location.href = (await api.account.linkGoogle()).url; } catch (e) { setError(e); }
+    setLinking(true);
+    try { window.location.href = (await api.account.linkGoogle()).url; } catch (e) { setError(e); setLinking(false); }
   }
 
   async function unlinkGoogle() {
@@ -167,7 +178,7 @@ function SecurityCard({ me, onChange }) {
           {google ? (
             <button className="btn" style={{ border: "1px solid #e5e7ef", padding: "6px 12px" }} disabled={busy || !u.has_password} title={u.has_password ? "" : "Set a password first"} onClick={unlinkGoogle}>Unlink</button>
           ) : (
-            <button className="btn" style={{ border: "1px solid #e5e7ef", padding: "6px 12px" }} onClick={linkGoogle}>Link Google</button>
+            <button className="btn" style={{ border: "1px solid #e5e7ef", padding: "6px 12px" }} onClick={linkGoogle} disabled={linking} aria-busy={linking}>{linking ? <Busy>Connecting…</Busy> : "Link Google"}</button>
           )}
         </SettingRow>
       )}
@@ -214,7 +225,7 @@ function PasswordModal({ hasPassword, onClose, onDone }) {
           <ErrorText error={error} />
           <div className={styles.modalFooter}>
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" disabled={busy}>{busy ? "Saving..." : "Save password"}</button>
+            <button className="btn btn-primary" disabled={busy}>{busy ? <Busy>Saving…</Busy> : "Save password"}</button>
           </div>
         </form>
       )}
@@ -248,7 +259,7 @@ function DisableTwoStepModal({ hasPassword, onClose, onDone }) {
         <ErrorText error={error} />
         <div className={styles.modalFooter}>
           <button type="button" className="btn btn-ghost" onClick={onClose}>Keep it on</button>
-          <button className="btn" style={{ background: "#b42318", color: "#fff" }} disabled={busy}>{busy ? "Turning off..." : "Turn off"}</button>
+          <button className="btn" style={{ background: "#b42318", color: "#fff" }} disabled={busy}>{busy ? <Busy>Turning off…</Busy> : "Turn off"}</button>
         </div>
       </form>
     </Modal>
@@ -280,7 +291,7 @@ function SessionsList() {
         )}
       </div>
       <ErrorText error={error} />
-      {!sessions && <div className={styles.skeletonLine} />}
+      {!sessions && <SkeletonKV rows={2} />}
       {sessions?.map((s) => (
         <div key={s.id} className={styles.kv} style={{ alignItems: "center" }}>
           <span style={{ display: "grid", gap: 2, textAlign: "left" }}>
@@ -323,7 +334,7 @@ function ActivityList() {
   return (
     <div style={{ marginTop: 16 }}>
       <div style={{ fontWeight: 700, display: "flex", gap: 6, alignItems: "center" }}><KeyRound size={16} /> Recent security activity</div>
-      {!events && <div className={styles.skeletonLine} />}
+      {!events && <SkeletonKV rows={3} />}
       {events?.length === 0 && <div className={styles.empty}>No activity yet.</div>}
       {events?.map((e) => (
         <div key={e.id} className={styles.kv}>
@@ -385,7 +396,7 @@ function NotificationsCard() {
   return (
     <section className={styles.card}>
       <CardTitle icon={Bell} title="Notifications" subtitle="Emails Paytrack sends about your payments" />
-      {!settings ? <div className={styles.skeletonLine} /> : (
+      {!settings ? <SkeletonKV rows={3} /> : (
         <>
           <SettingRow title="Payment receipts" description="Email a receipt for every successful payment you receive.">
             <Toggle label="Payment receipts" checked={settings.payment_receipts} disabled={saving} onChange={(v) => update({ payment_receipts: v })} />
@@ -427,11 +438,18 @@ function NotificationsCard() {
         {test && test !== "sending" && <div className={styles.muted} style={{ fontSize: 13, marginTop: 6 }}>{test}</div>}
         <div style={{ marginTop: 10, border: "1px solid #e9ebf4", borderRadius: 12, overflow: "hidden" }}>
           <div style={{ padding: "8px 12px", background: "#f9faff", fontSize: 13, borderBottom: "1px solid #eef1f7" }}>
-            <span className={styles.muted}>Subject: </span>{preview?.subject || "…"}
+            <span className={styles.muted}>Subject: </span>{preview ? preview.subject : <Skeleton w={200} h={12} />}
           </div>
           {preview ? (
-            <iframe title="Email preview" srcDoc={preview.html} sandbox="" style={{ width: "100%", height: 720, border: 0, display: "block", background: "#f6f7ff" }} />
-          ) : <div className={styles.skeletonLine} style={{ margin: 12 }} />}
+            <iframe title="Email preview" srcDoc={preview.html} sandbox="" loading="lazy" style={{ width: "100%", height: 720, border: 0, display: "block", background: "#f6f7ff" }} />
+          ) : (
+            <div style={{ display: "grid", gap: 10, padding: 24 }} aria-hidden="true">
+              <Skeleton w="45%" h={22} />
+              <Skeleton w="70%" h={12} />
+              <Skeleton w="60%" h={12} />
+              <Skeleton h={160} r={12} />
+            </div>
+          )}
         </div>
       </div>
     </section>

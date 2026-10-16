@@ -5,7 +5,8 @@ import { Plus } from "lucide-react";
 import styles from "@/app/dashboard/styles.module.css";
 import { api, getBaseUrl } from "@/lib/api";
 import { fmtDate } from "@/lib/format";
-import { CopyButton, ErrorText, Field, Modal, StatusBadge } from "@/components/ui.jsx";
+import { CopyButton, ErrorText, Field, Modal, SkeletonRows, StatusBadge } from "@/components/ui.jsx";
+import { Busy } from "@/components/Busy.jsx";
 
 export default function ApiKeysPage() {
   const [keys, setKeys] = useState(null);
@@ -57,7 +58,7 @@ export default function ApiKeysPage() {
             <div>Name</div><div>Key</div><div>Status</div><div>Created</div><div>Last used</div><div />
           </div>
           <div className={styles.tbody}>
-            {!keys && !error && <div className={styles.empty}>Loading...</div>}
+            {!keys && !error && <SkeletonRows rows={2} cols={5} />}
             {keys?.length === 0 && <div className={styles.empty}>No API keys yet.</div>}
             {keys?.map((k) => (
               <div key={k.id} className={styles.trow} style={{ opacity: k.revoked_at ? 0.6 : 1 }}>
@@ -125,7 +126,7 @@ export default function ApiKeysPage() {
             <>
               <button className="btn btn-ghost" onClick={() => setRevoking(null)} disabled={busy}>Cancel</button>
               <button className="btn btn-primary" style={{ background: "#b42318", boxShadow: "none" }} onClick={() => revoke(revoking)} disabled={busy}>
-                {busy ? "Revoking..." : "Revoke key"}
+                {busy ? <Busy>Revoking…</Busy> : "Revoke key"}
               </button>
             </>
           }
@@ -163,7 +164,7 @@ function CreateKeyModal({ onClose, onCreated }) {
         <ErrorText error={error} />
         <div className={styles.modalFooter}>
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Creating..." : "Create key"}</button>
+          <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? <Busy>Creating…</Busy> : "Create key"}</button>
         </div>
       </form>
     </Modal>

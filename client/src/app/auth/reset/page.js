@@ -7,6 +7,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext.jsx";
 import { ErrorLine, IconField, PasswordInput, StrengthMeter } from "@/components/auth.jsx";
+import { Busy } from "@/components/Busy.jsx";
+import { startTopLoader } from "@/components/TopLoader.jsx";
 
 export default function ResetPasswordPage() {
   return (
@@ -35,7 +37,7 @@ function Reset() {
     setError(null);
     try {
       start(await api.auth.resetPassword(token, password));
-      router.push("/dashboard");
+      startTopLoader(); router.push("/dashboard");
     } catch (err) {
       setError(err);
     } finally {
@@ -66,7 +68,7 @@ function Reset() {
               <PasswordInput id="confirm" value={confirm} onChange={setConfirm} autoComplete="new-password" minLength={10} />
             </IconField>
             <ErrorLine error={error} />
-            <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting ? "Saving..." : "Set password and sign in"}</button>
+            <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting ? <Busy>Saving…</Busy> : "Set password and sign in"}</button>
           </form>
         )}
       </div>

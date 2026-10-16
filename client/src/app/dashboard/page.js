@@ -6,7 +6,15 @@ import { CheckCircle2, Circle } from "lucide-react";
 import styles from "./styles.module.css";
 import { api } from "@/lib/api";
 import { destinationLabel, fmtDate, fmtKES, maskPhone } from "@/lib/format";
-import { ErrorText, StatusBadge } from "@/components/ui.jsx";
+import dynamic from "next/dynamic";
+import { ErrorText, Skeleton, SkeletonRows, StatusBadge } from "@/components/ui.jsx";
+
+// The card (3D tilt, SVG chip) is the heaviest thing on the page: load it lazily,
+// with a card-shaped skeleton in its place.
+const PaymentCard = dynamic(() => import("@/components/PaymentCard.jsx"), {
+  ssr: false,
+  loading: () => <Skeleton w="100%" h="auto" r={20} style={{ aspectRatio: "1.586", maxWidth: 400, justifySelf: "center" }} />,
+});
 
 const SAMPLE = 100; // payments used for the summary tiles
 
@@ -39,7 +47,7 @@ export default function OverviewPage() {
     <>
       <section className={styles.card}>
         <div className={styles.kicker}>Business</div>
-        <h2 className={styles.h2}>{me ? me.tenant.name : "Loading..."}</h2>
+        <h2 className={styles.h2}>{me ? me.tenant.name : <Skeleton w={220} h={22} style={{ marginTop: 4 }} />}</h2>
         {me && (
           <div className={styles.muted} style={{ fontSize: 13, marginTop: 4 }}>
             <span className={styles.mono} style={{ letterSpacing: 0 }}>{me.tenant.id}</span>
@@ -49,18 +57,21 @@ export default function OverviewPage() {
         <ErrorText error={error} />
       </section>
 
-      <section className={styles.summaryGrid} style={{ marginTop: 0 }}>
+      <section className={styles.hero}>
+        <PaymentCard channels={channels} holder={me?.tenant?.name} payments={payments} />
+        <div className={styles.heroStats}>
         <div className={styles.summaryCard}>
           <div className={styles.summaryLabel}>Collected (last {SAMPLE} payments)</div>
-          <div className={styles.summaryValue}>{payments ? fmtKES(volume) : "—"}</div>
+          <div className={styles.summaryValue}>{payments ? fmtKES(volume) : <Skeleton w="55%" h={22} />}</div>
         </div>
         <div className={styles.summaryCard}>
           <div className={styles.summaryLabel}>Successful payments</div>
-          <div className={styles.summaryValue}>{payments ? succeeded.length : "—"}</div>
+          <div className={styles.summaryValue}>{payments ? succeeded.length : <Skeleton w="25%" h={22} />}</div>
         </div>
         <div className={styles.summaryCard}>
           <div className={styles.summaryLabel}>Success rate</div>
-          <div className={styles.summaryValue}>{successRate == null ? "—" : `${successRate}%`}</div>
+          <div className={styles.summaryValue}>{!payments ? <Skeleton w="30%" h={22} /> : successRate == null ? "—" : `${successRate}%`}</div>
+        </div>
         </div>
       </section>
 
@@ -92,7 +103,7 @@ export default function OverviewPage() {
             <div>Reference</div><div>Amount</div><div>Status</div><div>Date</div>
           </div>
           <div className={styles.tbody}>
-            {!payments && <div className={styles.empty}>Loading...</div>}
+            {!payments && <SkeletonRows rows={5} cols={4} />}
             {payments?.length === 0 && <div className={styles.empty}>No payments yet.</div>}
             {payments?.slice(0, 5).map((p) => (
               <Link key={p.id} href={`/dashboard/payments?id=${encodeURIComponent(p.id)}`} className={`${styles.trow} ${styles.clickRow}`}>

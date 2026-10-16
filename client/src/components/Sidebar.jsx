@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { BookOpen, LogOut, Menu, X } from "lucide-react";
 import styles from "./sidebar.module.css";
@@ -11,8 +11,19 @@ import styles from "./sidebar.module.css";
 export default function Sidebar({ brand, items, activeHref, account, onSignOut }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const navRef = useRef(null);
+  // pill: position of the sliding highlight behind the active link.
+  const [pill, setPill] = useState(null);
+  const placed = useRef(false);
 
   useEffect(() => setOpen(false), [pathname]);
+
+  useLayoutEffect(() => {
+    const el = navRef.current?.querySelector('[aria-current="page"]');
+    if (!el) { setPill(null); return; }
+    setPill({ top: el.offsetTop, height: el.offsetHeight, animate: placed.current });
+    placed.current = true;
+  }, [activeHref]);
 
   return (
     <>
@@ -26,9 +37,23 @@ export default function Sidebar({ brand, items, activeHref, account, onSignOut }
       <aside className={`${styles.sidebar} ${open ? styles.open : ""}`}>
         <Link href="/dashboard" className={`${styles.brand} ${styles.sideBrand}`}>{brand}</Link>
 
-        <nav className={styles.nav}>
+        <nav className={styles.nav} ref={navRef}>
+          {pill && (
+            <span
+              className={styles.pill}
+              style={{ transform: `translateY(${pill.top}px)`, height: pill.height, transition: pill.animate ? undefined : "none" }}
+              aria-hidden="true"
+            />
+          )}
           {items.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} className={`${styles.link} ${activeHref === href ? styles.active : ""}`} aria-current={activeHref === href ? "page" : undefined}>
+            <Link
+              key={href}
+              href={href}
+              className={`${styles.link} ${activeHref === href ? styles.active : ""}`}
+              aria-current={activeHref === href ? "page" : undefined}
+              // Move the pill on click, before the route resolves, so it feels instant.
+              onClick={(e) => setPill({ top: e.currentTarget.offsetTop, height: e.currentTarget.offsetHeight, animate: true })}
+            >
               {Icon && <Icon size={18} />}
               <span>{label}</span>
             </Link>
