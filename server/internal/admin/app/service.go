@@ -95,6 +95,11 @@ func (s *Service) EnsureStaff(ctx context.Context, email, name, password string)
 	return false, s.repo.RevokeStaffSessions(ctx, st.ID, now)
 }
 
+// StaffEmails lists active staff, for operational alerts (e.g. new tickets).
+func (s *Service) StaffEmails(ctx context.Context) ([]string, error) {
+	return s.repo.ListActiveStaffEmails(ctx)
+}
+
 // ---------------------------------------------------------------- sign-in
 
 type Challenge struct {

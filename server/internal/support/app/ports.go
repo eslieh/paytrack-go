@@ -26,7 +26,7 @@ type Repository interface {
 	ListMessages(ctx context.Context, ticketID string, includeInternal bool) ([]*domain.Message, error)
 	CountByStatus(ctx context.Context) (map[domain.Status]int, error)
 
-	CreateFeedback(ctx context.Context, f *domain.Feedback) error
+	CreateFeedback(ctx context.Context, f *domain.Feedback, out []contracts.Notification) error
 	ListFeedback(ctx context.Context, before string, limit int) ([]*domain.Feedback, error)
 }
 
@@ -42,6 +42,11 @@ type TicketFilter struct {
 type Accounts interface {
 	UserContact(ctx context.Context, userID string) (email, tenantID string, err error)
 	TenantName(ctx context.Context, tenantID string) (string, error)
+}
+
+// Staff is the admin module, seen from support: who to alert.
+type Staff interface {
+	StaffEmails(ctx context.Context) ([]string, error)
 }
 
 type RateLimiter interface {

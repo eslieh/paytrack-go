@@ -19,6 +19,7 @@ type Repository interface {
 	GetStaff(ctx context.Context, id string) (*domain.Staff, error)
 	GetStaffByEmail(ctx context.Context, email string) (*domain.Staff, error)
 	SaveStaff(ctx context.Context, s *domain.Staff) error
+	ListActiveStaffEmails(ctx context.Context) ([]string, error)
 
 	CreateChallenge(ctx context.Context, c *domain.Challenge) error
 	GetChallenge(ctx context.Context, id string) (*domain.Challenge, error)

@@ -196,7 +196,7 @@ Two kinds of credential both resolve to a `tenant_id`, which scopes every query.
   - `closed` tickets take no more replies
   - internal notes never reach the customer and don't change the status
   - customers get `ticket_received`, `ticket_reply` (an excerpt plus a link, never the full text) and `ticket_resolved` (with a rating link)
-  - `SUPPORT_NOTIFY_EMAIL`, if set, gets `support_staff_alert` for new tickets and customer replies
+  - admins get `support_staff_alert` for new tickets and customer replies, and `support_review_alert` for ticket ratings and product feedback. They go to every active admin account, or to `SUPPORT_NOTIFY_EMAIL` (comma-separated) if set.
   - staff routes reuse the admin session through `adminhttp.Handler.Staff`
 - **Disabling a user:** blocks sign-in, refresh, password reset and every session check, revokes all sessions and trusted devices, and emails the user (`account_disabled`, then `account_enabled`).
 
@@ -218,7 +218,7 @@ Two kinds of credential both resolve to a `tenant_id`, which scopes every query.
 | Payments | `payment_receipt`, sent to the merchant when **payment receipts** are on, at `receipt_email` or the owner's address | `payment.succeeded` in notify |
 | Operations | `webhook_failing`, when a delivery exhausts its retries (on by default) | notify dispatcher |
 | Admin (always sent) | `admin_login_code`, `tenant_suspended`, `tenant_reinstated`, `account_disabled`, `account_enabled` | admin use cases |
-| Support | `ticket_received`, `ticket_reply`, `ticket_resolved`, `support_staff_alert` | support use cases, via `notifications.v1` |
+| Support | `ticket_received`, `ticket_reply`, `ticket_resolved`, `support_staff_alert`, `support_review_alert` | support use cases, via `notifications.v1` |
 | Account notices | `account_notice` (support signed you out, reset two-step, unlinked Google, changed your email) | admin recovery actions, via `notifications.v1` |
 
 Settings → Notifications shows a live preview of the real templates (`GET /v1/settings/notifications/preview`) and can send a test receipt.

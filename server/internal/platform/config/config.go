@@ -64,7 +64,8 @@ type Config struct {
 	ResendAPIKey string
 	EmailFrom    string
 	EmailReplyTo string
-	// SupportNotifyEmail receives new-ticket and customer-reply alerts; empty disables them.
+	// SupportNotifyEmail overrides who gets support alerts (new tickets,
+	// replies, ratings, feedback); empty means every active admin.
 	SupportNotifyEmail string
 
 	CORSAllowedOrigins []string

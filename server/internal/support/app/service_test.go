@@ -63,8 +63,9 @@ func (r *memRepo) ListMessages(_ context.Context, ticketID string, internal bool
 }
 func (r *memRepo) CountByStatus(context.Context) (map[domain.Status]int, error) { return nil, nil }
 func (r *memRepo) SupportStats(context.Context, time.Time) (*Stats, error)      { return &Stats{}, nil }
-func (r *memRepo) CreateFeedback(_ context.Context, f *domain.Feedback) error {
+func (r *memRepo) CreateFeedback(_ context.Context, f *domain.Feedback, out []contracts.Notification) error {
 	r.feedback = append(r.feedback, f)
+	r.out = append(r.out, out...)
 	return nil
 }
 func (r *memRepo) ListFeedback(context.Context, string, int) ([]*domain.Feedback, error) {
@@ -89,6 +90,10 @@ func (accounts) UserContact(_ context.Context, id string) (string, string, error
 }
 func (accounts) TenantName(context.Context, string) (string, error) { return "Acme Shop", nil }
 
+type staffDir []string
+
+func (d staffDir) StaffEmails(context.Context) ([]string, error) { return d, nil }
+
 type allowAll struct{}
 
 func (allowAll) Allow(context.Context, string, int, time.Duration) (bool, error) { return true, nil }
@@ -99,9 +104,14 @@ var (
 	staff = auth.Principal{Kind: auth.KindStaff, StaffID: "stf_1"}
 )
 
+// setup with staffEmail overrides the admin directory, which is empty.
 func setup(staffEmail string) (*Service, *memRepo) {
+	return setupWith(staffEmail, nil)
+}
+
+func setupWith(staffEmail string, admins staffDir) (*Service, *memRepo) {
 	repo := &memRepo{tickets: map[string]*domain.Ticket{}}
-	return NewService(repo, accounts{}, allowAll{}, Config{AppBaseURL: "https://app.test", StaffEmail: staffEmail}), repo
+	return NewService(repo, accounts{}, admins, allowAll{}, Config{AppBaseURL: "https://app.test", StaffEmail: staffEmail}), repo
 }
 
 func TestConversationAndNotifications(t *testing.T) {
@@ -185,6 +195,57 @@ func TestNoStaffAlertWithoutAddress(t *testing.T) {
 	tk, _ := svc.CreateTicket(context.Background(), owner, domain.NewTicket{Subject: "Help me", Body: "x"})
 	_, _ = svc.Reply(context.Background(), owner, tk.ID, "more")
 	if got := repo.emails(); len(got) != 1 || got[0] != "ticket_received→usr_1@acme.test" {
+		t.Fatalf("emails: %v", got)
+	}
+}
+
+func TestAdminsAlertedForTicketsRatingsAndFeedback(t *testing.T) {
+	svc, repo := setupWith("", staffDir{"ops@paytrack.test", "eva@paytrack.test"})
+	ctx := context.Background()
+
+	tk, _ := svc.CreateTicket(ctx, owner, domain.NewTicket{Subject: "Payment stuck", Body: "Pending."})
+	want := []string{"ticket_received→usr_1@acme.test", "support_staff_alert→ops@paytrack.test", "support_staff_alert→eva@paytrack.test"}
+	if got := repo.emails(); len(got) != 3 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("new ticket emails: %v", got)
+	}
+
+	repo.out = nil
+	resolved := domain.StatusResolved
+	_, _ = svc.StaffUpdate(ctx, tk.ID, TicketUpdate{Status: &resolved})
+	repo.out = nil
+	if _, err := svc.Rate(ctx, owner, tk.ID, 4, "quick"); err != nil {
+		t.Fatal(err)
+	}
+	if got := repo.emails(); len(got) != 2 || got[0] != "support_review_alert→ops@paytrack.test" {
+		t.Fatalf("rating emails: %v", got)
+	}
+	if d := repo.out[0].Email.Data; d["Stars"] != "★★★★☆" || d["Message"] != "quick" || d["Kind"] != "New rating" {
+		t.Fatalf("rating alert data: %v", d)
+	}
+
+	repo.out = nil
+	five := 5
+	if err := svc.SendFeedback(ctx, owner, &five, "Love the docs", "/dashboard"); err != nil {
+		t.Fatal(err)
+	}
+	if got := repo.emails(); len(got) != 2 || got[1] != "support_review_alert→eva@paytrack.test" {
+		t.Fatalf("feedback emails: %v", got)
+	}
+	if d := repo.out[0].Email.Data; d["Kind"] != "New feedback" || d["Message"] != "Love the docs" || d["Stars"] != "★★★★★" {
+		t.Fatalf("feedback alert data: %v", d)
+	}
+	for _, n := range repo.out {
+		if n.InApp != nil || n.TenantID != "" {
+			t.Fatalf("staff alert reached a tenant dashboard: %+v", n)
+		}
+	}
+}
+
+func TestNotifyEmailOverridesAdmins(t *testing.T) {
+	svc, repo := setupWith("help@paytrack.test, oncall@paytrack.test", staffDir{"ops@paytrack.test"})
+	_, _ = svc.CreateTicket(context.Background(), owner, domain.NewTicket{Subject: "Help me", Body: "x"})
+	got := repo.emails()
+	if len(got) != 3 || got[1] != "support_staff_alert→help@paytrack.test" || got[2] != "support_staff_alert→oncall@paytrack.test" {
 		t.Fatalf("emails: %v", got)
 	}
 }

@@ -144,7 +144,7 @@ func build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*module
 		return nil, err
 	}
 	m.support = supportapp.NewService(supportpg.New(pool), accountlink.Accounts{Identity: m.identity, Tenants: m.tenants},
-		m.limiter, supportapp.Config{AppBaseURL: cfg.AppBaseURL, StaffEmail: cfg.SupportNotifyEmail})
+		m.admin, m.limiter, supportapp.Config{AppBaseURL: cfg.AppBaseURL, StaffEmail: cfg.SupportNotifyEmail})
 	m.inbox = inboxapp.NewService(inboxpg.New(pool), m.mail)
 	m.notify.Wire(m.inbox)
 	return m, nil

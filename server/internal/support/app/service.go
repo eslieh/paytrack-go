@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/eslieh/paytrack-go/server/internal/contracts"
@@ -22,19 +23,22 @@ import (
 
 type Config struct {
 	AppBaseURL string // dashboard URL used in email links
-	StaffEmail string // where new-ticket and customer-reply alerts go; empty disables them
+	// StaffEmail overrides who gets staff alerts (comma-separated). Empty
+	// means every active admin account.
+	StaffEmail string
 }
 
 type Service struct {
 	repo     Repository
 	accounts Accounts
+	staff    Staff
 	limiter  RateLimiter
 	cfg      Config
 	now      func() time.Time
 }
 
-func NewService(repo Repository, accounts Accounts, limiter RateLimiter, cfg Config) *Service {
-	return &Service{repo: repo, accounts: accounts, limiter: limiter, cfg: cfg, now: time.Now}
+func NewService(repo Repository, accounts Accounts, staff Staff, limiter RateLimiter, cfg Config) *Service {
+	return &Service{repo: repo, accounts: accounts, staff: staff, limiter: limiter, cfg: cfg, now: time.Now}
 }
 
 const excerptLen = 280
@@ -67,9 +71,10 @@ func (s *Service) CreateTicket(ctx context.Context, p auth.Principal, n domain.N
 	}
 	m := &domain.Message{ID: ids.New("msg"), TicketID: t.ID, AuthorKind: domain.AuthorUser, AuthorID: p.UserID,
 		AuthorName: email, Body: body, CreatedAt: now}
+	staff := s.staffRecipients(ctx)
 	err = s.repo.CreateTicket(ctx, t, m, func() []contracts.Notification {
 		return append([]contracts.Notification{s.email(t, "ticket_received", s.ticketData(t, body, false))},
-			s.staffAlert(t, body, "New ticket")...)
+			s.staffAlert(staff, t, body, "New ticket")...)
 	})
 	if err != nil {
 		return nil, err
@@ -113,7 +118,7 @@ func (s *Service) Reply(ctx context.Context, p auth.Principal, id, body string) 
 	}
 	m := &domain.Message{ID: ids.New("msg"), TicketID: t.ID, AuthorKind: domain.AuthorUser, AuthorID: p.UserID,
 		AuthorName: email, Body: body, CreatedAt: now}
-	if err := s.repo.AddMessage(ctx, t, m, s.staffAlert(t, body, "New reply")); err != nil {
+	if err := s.repo.AddMessage(ctx, t, m, s.staffAlert(s.staffRecipients(ctx), t, body, "New reply")); err != nil {
 		return nil, err
 	}
 	return m, nil
@@ -127,7 +132,12 @@ func (s *Service) Rate(ctx context.Context, p auth.Principal, id string, rating 
 	if err := t.Rate(rating, comment, s.now()); err != nil {
 		return nil, err
 	}
-	return t, s.repo.SaveTicket(ctx, t, nil)
+	out := s.reviewAlert(s.staffRecipients(ctx), map[string]any{
+		"Kind": "New rating", "Ref": fmt.Sprintf("#%d", t.Number), "Subject": t.Subject, "BusinessName": t.TenantName,
+		"FromEmail": t.RequesterEmail, "Rating": rating, "Stars": stars(rating), "Message": t.RatingComment,
+		"URL": s.cfg.AppBaseURL + "/admin/support/" + t.ID,
+	})
+	return t, s.repo.SaveTicket(ctx, t, out)
 }
 
 func (s *Service) SendFeedback(ctx context.Context, p auth.Principal, rating *int, message, page string) error {
@@ -143,8 +153,20 @@ func (s *Service) SendFeedback(ctx context.Context, p auth.Principal, rating *in
 	if err := f.Validate(); err != nil {
 		return err
 	}
-	return s.repo.CreateFeedback(ctx, f)
+	name, err := s.accounts.TenantName(ctx, p.TenantID)
+	if err != nil {
+		return err
+	}
+	d := map[string]any{"Kind": "New feedback", "BusinessName": name, "FromEmail": email, "Message": f.Message,
+		"Page": f.Page, "URL": s.cfg.AppBaseURL + "/admin/feedback"}
+	if f.Rating != nil {
+		d["Rating"], d["Stars"] = *f.Rating, stars(*f.Rating)
+	}
+	return s.repo.CreateFeedback(ctx, f, s.reviewAlert(s.staffRecipients(ctx), d))
 }
+
+// stars renders 4 as ★★★★☆.
+func stars(n int) string { return strings.Repeat("★", n) + strings.Repeat("☆", 5-n) }
 
 // tenantTicket hides other tenants' tickets behind not-found.
 func (s *Service) tenantTicket(ctx context.Context, p auth.Principal, id string) (*domain.Ticket, error) {
@@ -276,16 +298,50 @@ func (s *Service) email(t *domain.Ticket, template string, data map[string]any) 
 		Email: &contracts.Email{Template: template, Category: contracts.EmailOperations, To: t.RequesterEmail, Data: data}}
 }
 
-// staffAlert emails SUPPORT_NOTIFY_EMAIL, if set.
-func (s *Service) staffAlert(t *domain.Ticket, body, kind string) []contracts.Notification {
-	if s.cfg.StaffEmail == "" {
+// staffRecipients is SUPPORT_NOTIFY_EMAIL if set, else every active admin.
+// Alerts are best-effort: a lookup failure never fails the customer's request.
+func (s *Service) staffRecipients(ctx context.Context) []string {
+	if s.cfg.StaffEmail != "" {
+		var out []string
+		for _, e := range strings.Split(s.cfg.StaffEmail, ",") {
+			if e = strings.TrimSpace(e); e != "" {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+	if s.staff == nil {
 		return nil
 	}
+	emails, err := s.staff.StaffEmails(ctx)
+	if err != nil {
+		slog.ErrorContext(ctx, "staff alert recipients lookup failed", "err", err)
+	}
+	return emails
+}
+
+// staffAlert tells staff a customer wrote on a ticket.
+func (s *Service) staffAlert(to []string, t *domain.Ticket, body, kind string) []contracts.Notification {
 	d := s.ticketData(t, body, false)
 	d["Kind"], d["RequesterEmail"] = kind, t.RequesterEmail
 	d["TicketURL"] = s.cfg.AppBaseURL + "/admin/support/" + t.ID
-	return []contracts.Notification{{ID: ids.New("ntf"),
-		Email: &contracts.Email{Template: "support_staff_alert", Category: contracts.EmailOperations, To: s.cfg.StaffEmail, Data: d}}}
+	return staffEmails(to, "support_staff_alert", d)
+}
+
+// reviewAlert tells staff a customer rated a ticket or sent feedback.
+func (s *Service) reviewAlert(to []string, data map[string]any) []contracts.Notification {
+	return staffEmails(to, "support_review_alert", data)
+}
+
+// staffEmails is one email-only notification per recipient (no dashboard item:
+// staff aren't tenant users).
+func staffEmails(to []string, template string, data map[string]any) []contracts.Notification {
+	out := make([]contracts.Notification, 0, len(to))
+	for _, addr := range to {
+		out = append(out, contracts.Notification{ID: ids.New("ntf"),
+			Email: &contracts.Email{Template: template, Category: contracts.EmailOperations, To: addr, Data: data}})
+	}
+	return out
 }
 
 func (s *Service) limit(ctx context.Context, key string, n int, window time.Duration) error {

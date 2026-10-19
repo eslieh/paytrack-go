@@ -71,6 +71,14 @@ func (r *Repo) SaveStaff(ctx context.Context, s *domain.Staff) error {
 		updated_at=$6 WHERE id=$1`, s.ID, s.Name, s.PasswordHash, s.LastLoginAt, s.DisabledAt, s.UpdatedAt))
 }
 
+func (r *Repo) ListActiveStaffEmails(ctx context.Context) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `SELECT email FROM admin.staff WHERE disabled_at IS NULL ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
 // ---------------------------------------------------------------- challenges
 
 func (r *Repo) CreateChallenge(ctx context.Context, c *domain.Challenge) error {

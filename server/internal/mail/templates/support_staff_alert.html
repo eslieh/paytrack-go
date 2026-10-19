@@ -9,7 +9,7 @@
 </td></tr></table>
 {{template "button" (dict "URL" .TicketURL "Label" "Open in admin")}}
 {{end}}
-{{define "footer"}}You're receiving this because this address is set as SUPPORT_NOTIFY_EMAIL.{{end}}
+{{define "footer"}}You're receiving this because you're a Paytrack admin (or this address is SUPPORT_NOTIFY_EMAIL).{{end}}
 {{define "text"}}{{.Kind}} {{.Ref}} from {{.BusinessName}} ({{.RequesterEmail}})
 
 Subject: {{.Subject}}

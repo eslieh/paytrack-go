@@ -47,6 +47,15 @@ func (r *memRepo) GetStaffByEmail(ctx context.Context, email string) (*domain.St
 	}
 	return nil, ErrNotFound
 }
+func (r *memRepo) ListActiveStaffEmails(context.Context) ([]string, error) {
+	var out []string
+	for _, s := range r.staff {
+		if !s.Disabled() {
+			out = append(out, s.Email)
+		}
+	}
+	return out, nil
+}
 func (r *memRepo) SaveStaff(_ context.Context, s *domain.Staff) error {
 	c := *s
 	r.staff[s.ID] = &c

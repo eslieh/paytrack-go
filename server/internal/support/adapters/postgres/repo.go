@@ -186,10 +186,14 @@ func (r *Repo) ListMessages(ctx context.Context, ticketID string, includeInterna
 
 // ---------------------------------------------------------------- feedback
 
-func (r *Repo) CreateFeedback(ctx context.Context, f *domain.Feedback) error {
-	_, err := r.pool.Exec(ctx, `INSERT INTO support.feedback (id, tenant_id, user_id, user_email, rating, message, page, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, f.ID, f.TenantID, f.UserID, f.UserEmail, f.Rating, f.Message, f.Page, f.CreatedAt)
-	return err
+func (r *Repo) CreateFeedback(ctx context.Context, f *domain.Feedback, out []contracts.Notification) error {
+	return db.InTx(ctx, r.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `INSERT INTO support.feedback (id, tenant_id, user_id, user_email, rating, message, page, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, f.ID, f.TenantID, f.UserID, f.UserEmail, f.Rating, f.Message, f.Page, f.CreatedAt); err != nil {
+			return err
+		}
+		return publish(ctx, tx, out)
+	})
 }
 
 func (r *Repo) ListFeedback(ctx context.Context, before string, limit int) ([]*domain.Feedback, error) {
