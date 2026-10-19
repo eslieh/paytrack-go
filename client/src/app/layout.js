@@ -13,7 +13,7 @@ const figtree = Figtree({
 });
 
 export const metadata = {
-  metadataBase: new URL("https://payments.geninworld.com"),
+  metadataBase: new URL("https://paytrack.pesagrid.co.ke"),
   title: {
     default: "Paytrack — M‑Pesa integration for developers",
     template: "%s — Paytrack",

@@ -7,6 +7,7 @@ import styles from "./docs.module.css";
 import { getBaseUrl } from "@/lib/api";
 import { DASHBOARD_URL, ENDPOINT_GROUPS, ERROR_CODES, ERROR_STATUSES, EX, OBJECTS, WEBHOOK_RETRY_SCHEDULE } from "./content";
 import { LANGS, highlight, sample } from "./code";
+import BuiltBy from "@/components/BuiltBy.jsx";
 
 const BASE = getBaseUrl();
 const LANG_KEY = "paytrack_docs_lang";
@@ -853,7 +854,7 @@ do {
         ))}
 
         <footer className={styles.footer}>
-          <span>© {new Date().getFullYear()} Paytrack from Geninworld Limited</span>
+          <BuiltBy />
           <span>
             <Link href="/terms">Terms</Link> · <Link href="/privacy">Privacy</Link> · <Link href="/disclaimer">Disclaimer</Link>
           </span>

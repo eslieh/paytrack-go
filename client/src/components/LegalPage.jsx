@@ -1,6 +1,7 @@
 import Link from "next/link";
 import styles from "./legal.module.css";
 import { LEGAL, LEGAL_DOCS } from "@/lib/legal";
+import BuiltBy from "./BuiltBy.jsx";
 
 // LegalPage is the shared shell for /terms, /privacy and /disclaimer.
 // `sections` is [{ id, title, body }] and drives both the TOC and the content.
@@ -59,7 +60,10 @@ export default function LegalPage({ current, title, kicker, tldr, sections }) {
           ))}
 
           <footer className={styles.footer}>
-            <span>© {new Date().getFullYear()} {LEGAL.company}. Questions about this document: <a href={`mailto:${LEGAL.contact}`}>{LEGAL.contact}</a></span>
+            <span style={{ display: "grid", gap: 6 }}>
+              <BuiltBy />
+              <span>Questions about this document: <a href={`mailto:${LEGAL.contact}`}>{LEGAL.contact}</a></span>
+            </span>
             <span className={styles.footerLinks}>
               {LEGAL_DOCS.filter((d) => d.href !== current).map((d) => <Link key={d.href} href={d.href}>{d.label}</Link>)}
               <Link href="/docs">API docs</Link>

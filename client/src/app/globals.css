@@ -136,3 +136,9 @@ a {
 html {
   color-scheme: light;
 }
+
+/* Smooth in-page scrolling; the padding keeps headings clear of the sticky nav. */
+html { scroll-padding-top: 80px; }
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
