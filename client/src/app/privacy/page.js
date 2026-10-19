@@ -2,11 +2,13 @@ import Link from "next/link";
 import LegalPage from "@/components/LegalPage.jsx";
 import s from "@/components/legal.module.css";
 import { LEGAL } from "@/lib/legal";
+import { pageMeta } from "@/lib/site";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "Privacy Policy",
   description: "What data Paytrack collects, why, who it's shared with, how it's protected, and your rights under Kenya's Data Protection Act.",
-};
+  path: "/privacy",
+});
 
 const DATA = [
   ["Account", "Business name, owner email, password (stored as a bcrypt hash, never in plain text), email verification state", "Running your account, signing you in, contacting you", "You"],
@@ -22,7 +24,7 @@ const DATA = [
 
 const SUBPROCESSORS = [
   ["Safaricom PLC (M-Pesa Daraja)", "Sending STK pushes and receiving results", "Payment data needed for the push: phone, amount, destination, reference"],
-  ["Amazon Web Services", "Hosting, compute and database", "Everything we store, encrypted in transit"],
+  ["Contabo", "Hosting, compute and database", "Everything we store, encrypted in transit"],
   ["Resend", "Transactional email delivery", "Your email address and the message content"],
   ["Google", "Optional Google sign-in", "Sign-in exchange only, if you use it"],
 ];

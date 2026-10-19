@@ -2,11 +2,13 @@ import Link from "next/link";
 import LegalPage from "@/components/LegalPage.jsx";
 import s from "@/components/legal.module.css";
 import { LEGAL } from "@/lib/legal";
+import { pageMeta } from "@/lib/site";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "Terms of Service",
-  description: "The rules for using the Paytrack API and dashboard.",
-};
+  description: "Terms for using the Paytrack M-Pesa API and dashboard: accounts, API keys, acceptable use, merchant duties, liability and governing law (Kenya).",
+  path: "/terms",
+});
 
 const sections = [
   {

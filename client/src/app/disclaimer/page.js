@@ -2,11 +2,13 @@ import Link from "next/link";
 import LegalPage from "@/components/LegalPage.jsx";
 import s from "@/components/legal.module.css";
 import { LEGAL } from "@/lib/legal";
+import { pageMeta } from "@/lib/site";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "Non-custodial Disclaimer",
   description: "Paytrack never holds, pools or settles your money. Funds move from your customer's M-Pesa straight to your bank account, PayBill or Till.",
-};
+  path: "/disclaimer",
+});
 
 const FLOW = `customer's M-Pesa wallet
         │  (customer enters PIN on the STK prompt)
