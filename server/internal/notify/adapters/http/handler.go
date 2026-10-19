@@ -66,7 +66,7 @@ func (h *Handler) listFor(w http.ResponseWriter, r *http.Request, tenantID strin
 	limit := httpx.QueryLimit(r, 25, 100)
 	status := httpx.TrimmedQuery(r, "status")
 	switch domain.Status(status) {
-	case "", domain.StatusPending, domain.StatusDelivering, domain.StatusDelivered, domain.StatusFailed:
+	case "", domain.StatusPending, domain.StatusDelivering, domain.StatusDelivered, domain.StatusFailed, domain.StatusSkipped:
 	default:
 		httpx.WriteError(w, r, errs.Invalid("invalid_status", "unknown status filter"))
 		return

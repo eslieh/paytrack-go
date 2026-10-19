@@ -18,6 +18,10 @@ const (
 	StatusDelivering Status = "delivering" // claimed by a dispatcher (lease)
 	StatusDelivered  Status = "delivered"
 	StatusFailed     Status = "failed" // retries exhausted; can be redelivered manually
+	// StatusSkipped means no webhook URL was configured when the event
+	// happened: nothing was sent and nothing is retried. It can be
+	// redelivered once a URL is set.
+	StatusSkipped Status = "skipped"
 )
 
 // Backoff is the delay after each failed attempt; its length is the number
@@ -73,6 +77,16 @@ func (d *Delivery) RecordFailure(statusCode int, errMsg string, now time.Time) {
 	}
 	next := now.Add(Backoff[d.Attempts-1])
 	d.Status, d.NextAttemptAt = StatusPending, &next
+}
+
+// NoEndpoint is the LastError recorded on skipped deliveries.
+const NoEndpoint = "no webhook URL configured"
+
+// Skip records that there was nowhere to send the event.
+func (d *Delivery) Skip(now time.Time) {
+	d.Status, d.NextAttemptAt = StatusSkipped, nil
+	d.LastError, d.LastStatusCode = NoEndpoint, 0
+	d.UpdatedAt = now
 }
 
 // Redeliver queues the delivery again with a fresh retry budget.

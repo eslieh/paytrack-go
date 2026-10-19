@@ -213,7 +213,7 @@ export const OBJECTS = [
       ["event_id", "string", "The event being delivered."],
       ["event_type", "string", "Same as the event's `type`."],
       ["payment_id", "string", "The payment the event is about."],
-      ["status", "enum", "`pending`, `delivering`, `delivered` or `failed` (retries exhausted)."],
+      ["status", "enum", "`pending`, `delivering`, `delivered`, `failed` (retries exhausted) or `skipped` (no webhook URL was set when the event happened; nothing was sent, and you can redeliver it after setting one)."],
       ["attempts", "integer", "Attempts made so far. Reset to 0 by a redelivery."],
       ["next_attempt_at", "timestamp | null", "When the next retry is due."],
       ["last_error", "string", "Last transport error or `endpoint returned HTTP 5xx`."],
@@ -447,7 +447,7 @@ export const ENDPOINT_GROUPS = [
         description: "Every attempt to send an event to you, newest first, with cursor pagination.",
         query: [
           ["payment_id", "string", false, "Only deliveries for this payment."],
-          ["status", "enum", false, "`pending`, `delivering`, `delivered` or `failed`."],
+          ["status", "enum", false, "`pending`, `delivering`, `delivered`, `failed` or `skipped`."],
           ["limit", "integer", false, "1–100. Default 25."],
           ["cursor", "string", false, "`next_cursor` from the previous page."],
         ],

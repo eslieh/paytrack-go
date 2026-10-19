@@ -505,7 +505,7 @@ paths:
       summary: List webhook deliveries
       parameters:
         - { name: payment_id, in: query, schema: { type: string } }
-        - { name: status, in: query, schema: { type: string, enum: [pending, delivering, delivered, failed] } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, delivering, delivered, failed, skipped] } }
         - { $ref: "#/components/parameters/cursor" }
         - { $ref: "#/components/parameters/limit" }
       responses:
@@ -929,7 +929,10 @@ components:
         event_id: { type: string }
         event_type: { type: string }
         payment_id: { type: string }
-        status: { type: string, enum: [pending, delivering, delivered, failed] }
+        status:
+          type: string
+          enum: [pending, delivering, delivered, failed, skipped]
+          description: "`skipped`: no webhook URL was set when the event happened; nothing was sent. Redeliver after setting one."
         attempts: { type: integer }
         next_attempt_at: { type: [string, "null"], format: date-time }
         last_error: { type: string }

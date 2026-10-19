@@ -8,7 +8,7 @@ import { fmtDate, maskSecret } from "@/lib/format";
 import { CopyButton, ErrorText, Field, Modal, SkeletonRows, StatusBadge, useInView } from "@/components/ui.jsx";
 import { Busy } from "@/components/Busy.jsx";
 
-const DELIVERY_STATUSES = ["pending", "delivering", "delivered", "failed"];
+const DELIVERY_STATUSES = ["pending", "delivering", "delivered", "failed", "skipped"];
 
 const VERIFY_SNIPPET = `// Node.js (Express) — verify a PayTrack webhook
 const crypto = require("crypto");

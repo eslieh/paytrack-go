@@ -111,7 +111,17 @@ func (s *Service) Enqueue(ctx context.Context, ev contracts.PaymentEvent) error 
 	if err != nil {
 		return err
 	}
-	return s.repo.Create(ctx, domain.NewDelivery(ids.New("whd"), ev.ID, ev.TenantID, ev.Data.ID, ev.Type, body, s.now()))
+	d := domain.NewDelivery(ids.New("whd"), ev.ID, ev.TenantID, ev.Data.ID, ev.Type, body, s.now())
+	// No endpoint yet: keep the event (so it can be redelivered once a URL is
+	// set) but don't attempt, retry or alert.
+	t, err := s.targets.Target(ctx, ev.TenantID)
+	if err != nil {
+		return err
+	}
+	if t.URL == "" {
+		d.Skip(s.now())
+	}
+	return s.repo.Create(ctx, d)
 }
 
 // Dispatch sends one batch of due deliveries concurrently.
@@ -141,7 +151,7 @@ func (s *Service) attempt(ctx context.Context, d *domain.Delivery) {
 	case err != nil:
 		d.RecordFailure(0, fmt.Sprintf("loading webhook target: %v", err), s.now())
 	case t.URL == "":
-		d.RecordFailure(0, "no webhook URL configured", s.now())
+		d.Skip(s.now())
 	default:
 		code, sendErr := s.sender.Send(ctx, t.URL, map[string]string{
 			"Content-Type":         "application/json",
@@ -185,6 +195,11 @@ func (s *Service) Redeliver(ctx context.Context, tenantID, id string) (*domain.D
 	}
 	if d.Status == domain.StatusDelivering {
 		return nil, errs.Conflict("delivery_in_progress", "delivery is currently being attempted")
+	}
+	if t, err := s.targets.Target(ctx, tenantID); err != nil {
+		return nil, err
+	} else if t.URL == "" {
+		return nil, errs.Conflict("webhook_url_missing", "set a webhook URL before redelivering events")
 	}
 	d.Redeliver(s.now())
 	return d, s.repo.Save(ctx, d)
