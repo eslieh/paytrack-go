@@ -1,0 +1,11 @@
+{{define "subject"}}You can sign in to Paytrack again{{end}}
+{{define "preheader"}}Sign-in has been re-enabled for your account.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">You can sign in again</h1>
+<p style="%%P%%">Sign-in has been re-enabled for your Paytrack account.</p>
+{{template "button" (dict "URL" .SignInURL "Label" "Sign in")}}
+{{end}}
+{{define "text"}}You can sign in to Paytrack again
+
+Sign-in has been re-enabled for your Paytrack account: {{.SignInURL}}
+{{end}}

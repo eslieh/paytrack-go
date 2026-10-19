@@ -19,7 +19,7 @@ func TestNewChannel(t *testing.T) {
 		"unknown bank":     {Name: "x", Type: ChannelBank, BankCode: "999999", AccountNumber: "1"},
 		"bank no account":  {Name: "x", Type: ChannelBank, BankCode: "247247"},
 		"paybill bad num":  {Name: "x", Type: ChannelPaybill, BusinessNumber: "12"},
-		"account too long": {Name: "x", Type: ChannelPaybill, BusinessNumber: "400200", AccountNumber: "1234567890123"},
+		"account too long": {Name: "x", Type: ChannelPaybill, BusinessNumber: "400200", AccountNumber: "123456789012345678901"},
 		"unknown type":     {Name: "x", Type: "wallet"},
 	} {
 		if _, err := NewChannel("c", "t", p, now); err == nil {

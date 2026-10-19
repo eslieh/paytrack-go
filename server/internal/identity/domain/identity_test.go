@@ -39,3 +39,20 @@ func TestMaskEmail(t *testing.T) {
 		}
 	}
 }
+
+func TestDisableAndEnable(t *testing.T) {
+	now := time.Now()
+	u := &User{}
+	if err := u.Enable(now); err == nil {
+		t.Fatal("enabling an enabled user must fail")
+	}
+	if err := u.Disable("takeover", now); err != nil || !u.Disabled() || u.DisabledReason != "takeover" {
+		t.Fatalf("disable: %+v %v", u, err)
+	}
+	if err := u.Disable("again", now); err == nil {
+		t.Fatal("double disable must fail")
+	}
+	if err := u.Enable(now); err != nil || u.Disabled() || u.DisabledReason != "" {
+		t.Fatalf("enable: %+v %v", u, err)
+	}
+}

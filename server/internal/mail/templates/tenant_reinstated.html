@@ -1,0 +1,13 @@
+{{define "subject"}}Your Paytrack account is active again{{end}}
+{{define "preheader"}}{{.BusinessName}} can accept payments again.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">Your account is active again</h1>
+<p style="%%P%%">We've lifted the suspension on <strong style="color:%%fg%%;">{{.BusinessName}}</strong>. Your API keys work again and you can start payments as usual.</p>
+{{template "button" (dict "URL" .DashboardURL "Label" "Open dashboard")}}
+{{end}}
+{{define "text"}}Your Paytrack account is active again
+
+We've lifted the suspension on {{.BusinessName}}. Your API keys work again and you can start payments as usual.
+
+{{.DashboardURL}}
+{{end}}

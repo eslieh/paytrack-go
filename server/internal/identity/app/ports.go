@@ -77,6 +77,7 @@ type RateLimiter interface {
 type Tenants interface {
 	CreateTenant(ctx context.Context, name string) (id string, err error)
 	TenantName(ctx context.Context, id string) (string, error)
+	TenantSuspended(ctx context.Context, id string) (bool, error)
 }
 
 type GoogleProfile struct {

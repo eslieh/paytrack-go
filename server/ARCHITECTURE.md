@@ -6,7 +6,7 @@ v1 scope: **C2B collections via STK push** (Lipa Na M-Pesa Online). Backend only
 
 ## Shape: hexagonal modular monolith
 
-This is one Go module and one container image. It has four modules, each a hexagon (domain → app/ports → adapters), and each owns its own Postgres schema:
+This is one Go module and one container image. It has eight modules, each a hexagon (domain → app/ports → adapters), and each owns its own Postgres schema:
 
 | Module | Owns | Inbound adapters | Outbound adapters |
 |---|---|---|---|
@@ -16,6 +16,8 @@ This is one Go module and one container image. It has four modules, each a hexag
 | `payment` | Payment aggregate + state machine, reconciliation | HTTP, Kafka (`mpesa.stk-callbacks.v1`) | Postgres + outbox, Daraja, tenant (in-process) |
 | `callback` | raw Daraja callback inbox | HTTP (public) | Postgres + outbox |
 | `notify` | webhook deliveries, retries; merchant receipt, first-payment and webhook-failure emails | Kafka (`payment.events.v1`), HTTP | Postgres, HTTP sender, tenant + mail (in-process) |
+| `support` | support tickets, message threads with staff-only internal notes, ratings, product feedback | HTTP (`/v1/support` for users, `/admin/v1/support` for staff) | Postgres, mail, rate limiter, identity + tenant (in-process) |
+| `admin` | platform staff, staff sessions and sign-in codes, audit log of staff actions; tenant suspension and user disabling | HTTP (`/admin/v1`), CLI (`create-admin`) | Postgres, bcrypt, mail, rate limiter, tenant + identity (in-process) |
 
 Rules:
 - `domain` packages import nothing from adapters, Postgres, Kafka or HTTP.
@@ -32,6 +34,8 @@ server/
     payment/  {domain, app, adapters/{http,postgres,daraja,kafka,tenantlink}}
     callback/ {domain, app, adapters/{http,postgres}}
     notify/   {domain, app, adapters/{http,postgres,kafka,webhook,tenantlink}}
+    admin/    {domain, app, adapters/{http,postgres,identitylink}}
+    support/  {domain, app, adapters/{http,postgres,accountlink}}
   migrations/              embedded SQL
   api/openapi.yaml         contract for the frontend and tenant integrations
 ```
@@ -163,6 +167,26 @@ Two kinds of credential both resolve to a `tenant_id`, which scopes every query.
   - responses are 429 `rate_limited`
 - **Audit log:** `identity.security_events` records sign-ins, failures, codes, password and two-step changes, Google link/unlink, session revocations and refresh-token reuse. It's shown under Settings → Security.
 
+## Admin portal
+
+- **Staff are not tenant users.** They live in `admin.staff` and sign in at `/admin/login` with a password **and** an emailed code, every time (no trusted devices). The session is an opaque `pt_admin` cookie: httpOnly, `SameSite=Strict`, scoped to `/api/admin`, with a 30-minute idle timeout and a 12-hour maximum. Tenant bearer tokens never reach `/admin/v1`, and staff cookies never reach tenant routes.
+- **Writes need a header:** state-changing admin requests must send `X-Paytrack-Admin: 1`, which cross-site forms cannot set. `ADMIN_ALLOWED_CIDRS` can also restrict `/admin/v1` to office or VPN networks (other addresses get 404).
+- **Bootstrap:** `paytrack create-admin <email> [name]` (password from `ADMIN_PASSWORD` or stdin) creates the account. Re-running it resets the password and signs out existing staff sessions.
+- **Audit log:** `admin.audit_log` records every staff sign-in and account action, with the reason given, and is shown on the admin Activity page. Every account action requires a 5–500 character reason and emails the customer.
+- **Suspending a tenant:**
+  - its API keys get 403 `tenant_suspended`
+  - its dashboard sessions are flagged `Suspended`, so `ReadOnlyWhenSuspended` rejects every non-GET request except `/v1/auth/*`, `/v1/me/*` and `/v1/support/*`
+  - payments already in flight still complete, and their webhooks still go out
+  - the owner is emailed (`tenant_suspended`, then `tenant_reinstated`)
+- **Support:**
+  - tickets start `awaiting_staff`, a staff reply makes them `awaiting_user`, and a customer reply puts them back in the queue (reopening a `resolved` ticket)
+  - `closed` tickets take no more replies
+  - internal notes never reach the customer and don't change the status
+  - customers get `ticket_received`, `ticket_reply` (an excerpt plus a link, never the full text) and `ticket_resolved` (with a rating link)
+  - `SUPPORT_NOTIFY_EMAIL`, if set, gets `support_staff_alert` for new tickets and customer replies
+  - staff routes reuse the admin session through `adminhttp.Handler.Staff`
+- **Disabling a user:** blocks sign-in, refresh, password reset and every session check, revokes all sessions and trusted devices, and emails the user (`account_disabled`, then `account_enabled`).
+
 ## Transactional email
 
 - **Queueing:** modules call their `Mailer` port, which the mail module's `Enqueue` satisfies. The template is rendered once up front, so a bad template or data bug fails at the call site, then the message is queued in `mail.messages`.
@@ -180,6 +204,8 @@ Two kinds of credential both resolve to a `tenant_id`, which scopes every query.
 | Lifecycle | `welcome`, `setup_reminder` (day 1 and day 3 if the checklist is incomplete, verified owners only), `first_payment` | verification, an hourly worker job, the first `payment.succeeded` |
 | Payments | `payment_receipt`, sent to the merchant when **payment receipts** are on, at `receipt_email` or the owner's address | `payment.succeeded` in notify |
 | Operations | `webhook_failing`, when a delivery exhausts its retries (on by default) | notify dispatcher |
+| Admin (always sent) | `admin_login_code`, `tenant_suspended`, `tenant_reinstated`, `account_disabled`, `account_enabled` | admin use cases |
+| Support | `ticket_received`, `ticket_reply`, `ticket_resolved`, `support_staff_alert` | support use cases |
 
 Settings → Notifications shows a live preview of the real templates (`GET /v1/settings/notifications/preview`) and can send a test receipt.
 

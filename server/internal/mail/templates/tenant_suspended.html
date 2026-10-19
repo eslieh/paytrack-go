@@ -1,0 +1,19 @@
+{{define "subject"}}Your Paytrack account has been suspended{{end}}
+{{define "preheader"}}{{.BusinessName}} can no longer start new payments. Your dashboard is read-only.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">Your account has been suspended</h1>
+<p style="%%P%%">We've suspended <strong style="color:%%fg%%;">{{.BusinessName}}</strong> on Paytrack. While it is suspended, your API keys won't work and no new payments can be started. Payments that were already in progress will still complete, and their webhooks will still be sent.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="%%BOX%%margin:8px 0 20px 0;"><tr><td style="font-family:%%font%%;font-size:14px;line-height:1.7;color:%%fg%%;">
+  <div style="%%LABEL%%">Reason</div><div>{{.Reason}}</div>
+</td></tr></table>
+<p style="%%P%%">You can still sign in to review your payments and contact our support team. If you think this is a mistake, let us know and we'll take another look.</p>
+{{template "button" (dict "URL" .DashboardURL "Label" "Contact support")}}
+{{end}}
+{{define "text"}}Your Paytrack account has been suspended
+
+We've suspended {{.BusinessName}} on Paytrack. Your API keys won't work and no new payments can be started. Payments already in progress will still complete.
+
+Reason: {{.Reason}}
+
+You can still sign in to review your payments and contact support: {{.DashboardURL}}
+{{end}}

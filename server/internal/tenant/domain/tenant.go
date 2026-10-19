@@ -11,11 +11,41 @@ import (
 )
 
 type Tenant struct {
-	ID            string
-	Name          string
-	WebhookURL    string
-	WebhookSecret string // plaintext in memory; encrypted at rest
-	CreatedAt     time.Time
+	ID              string
+	Name            string
+	WebhookURL      string
+	WebhookSecret   string // plaintext in memory; encrypted at rest
+	Status          Status
+	SuspendedAt     *time.Time
+	SuspendedReason string
+	CreatedAt       time.Time
+}
+
+// Status is a tenant's standing with the platform.
+type Status string
+
+const (
+	StatusActive    Status = "active"
+	StatusSuspended Status = "suspended" // API keys rejected, dashboard read-only
+)
+
+func (t *Tenant) Suspended() bool { return t.Status == StatusSuspended }
+
+// Suspend blocks the tenant. Payments already in flight still complete.
+func (t *Tenant) Suspend(reason string, at time.Time) error {
+	if t.Suspended() {
+		return errs.Conflict("already_suspended", "tenant is already suspended")
+	}
+	t.Status, t.SuspendedAt, t.SuspendedReason = StatusSuspended, &at, reason
+	return nil
+}
+
+func (t *Tenant) Reinstate() error {
+	if !t.Suspended() {
+		return errs.Conflict("not_suspended", "tenant is not suspended")
+	}
+	t.Status, t.SuspendedAt, t.SuspendedReason = StatusActive, nil, ""
+	return nil
 }
 
 // APIKey authenticates a tenant's backend. Only the SHA-256 hash is stored;
@@ -80,7 +110,7 @@ type Channel struct {
 
 var (
 	shortCodeRe  = regexp.MustCompile(`^\d{5,7}$`)
-	accountRefRe = regexp.MustCompile(`^[A-Za-z0-9\-_/. ]{1,12}$`) // Daraja AccountReference limit
+	accountRefRe = regexp.MustCompile(`^[A-Za-z0-9\-_/. ]{1,20}$`) // bank/PayBill account numbers
 )
 
 type NewChannelParams struct {
@@ -99,7 +129,7 @@ func NewChannel(id, tenantID string, p NewChannelParams, now time.Time) (*Channe
 	c := &Channel{ID: id, TenantID: tenantID, Name: name, Type: p.Type, Active: true, CreatedAt: now}
 	account := strings.TrimSpace(p.AccountNumber)
 	if account != "" && !accountRefRe.MatchString(account) {
-		return nil, errs.Invalid("invalid_account_number", "account_number must be 1-12 characters: letters, digits, space and -_/.")
+		return nil, errs.Invalid("invalid_account_number", "account_number must be 1-20 characters: letters, digits, space and -_/.")
 	}
 	switch p.Type {
 	case ChannelBank:

@@ -55,6 +55,43 @@ func (s *Service) TenantName(ctx context.Context, id string) (string, error) {
 	return t.Name, nil
 }
 
+// TenantSuspended is checked on every authenticated request.
+func (s *Service) TenantSuspended(ctx context.Context, id string) (bool, error) {
+	st, err := s.repo.GetTenantStatus(ctx, id)
+	return st == domain.StatusSuspended, err
+}
+
+// SuspendTenant is a platform-admin action; see the admin module.
+func (s *Service) SuspendTenant(ctx context.Context, id, reason string) error {
+	t, err := s.tenant(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := t.Suspend(reason, s.now()); err != nil {
+		return err
+	}
+	return s.repo.SaveTenantStatus(ctx, t)
+}
+
+func (s *Service) ReinstateTenant(ctx context.Context, id string) error {
+	t, err := s.tenant(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := t.Reinstate(); err != nil {
+		return err
+	}
+	return s.repo.SaveTenantStatus(ctx, t)
+}
+
+func (s *Service) tenant(ctx context.Context, id string) (*domain.Tenant, error) {
+	t, err := s.repo.GetTenant(ctx, id)
+	if errors.Is(err, ErrNotFound) {
+		return nil, errs.NotFound("tenant_not_found", "tenant not found")
+	}
+	return t, err
+}
+
 // AuthenticateAPIKey resolves a tenant backend's API key.
 func (s *Service) AuthenticateAPIKey(ctx context.Context, bearer string) (auth.Principal, error) {
 	sum := sha256.Sum256([]byte(bearer))
@@ -64,6 +101,11 @@ func (s *Service) AuthenticateAPIKey(ctx context.Context, bearer string) (auth.P
 	}
 	if err != nil {
 		return auth.Principal{}, err
+	}
+	if suspended, err := s.TenantSuspended(ctx, k.TenantID); err != nil {
+		return auth.Principal{}, err
+	} else if suspended {
+		return auth.Principal{}, errs.Forbidden("tenant_suspended", "this account is suspended; contact support")
 	}
 	if k.LastUsedAt == nil || s.now().Sub(*k.LastUsedAt) > time.Minute {
 		if err := s.repo.TouchAPIKey(ctx, k.ID, s.now()); err != nil {

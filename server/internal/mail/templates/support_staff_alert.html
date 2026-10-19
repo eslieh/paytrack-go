@@ -1,0 +1,20 @@
+{{define "subject"}}[Support] {{.Kind}} {{.Ref}} from {{.BusinessName}}: {{.Subject}}{{end}}
+{{define "preheader"}}{{.Excerpt}}{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">{{.Kind}} {{.Ref}}</h1>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="%%BOX%%margin:8px 0 20px 0;"><tr><td style="font-family:%%font%%;font-size:14px;line-height:1.7;color:%%fg%%;">
+  <div style="%%LABEL%%">From</div><div>{{.BusinessName}} · {{.RequesterEmail}}</div>
+  <div style="%%LABEL%%margin-top:8px;">Subject</div><div>{{.Subject}}</div>
+  <div style="%%LABEL%%margin-top:8px;">Message</div><div style="color:%%muted%%;">{{.Excerpt}}</div>
+</td></tr></table>
+{{template "button" (dict "URL" .TicketURL "Label" "Open in admin")}}
+{{end}}
+{{define "footer"}}You're receiving this because this address is set as SUPPORT_NOTIFY_EMAIL.{{end}}
+{{define "text"}}{{.Kind}} {{.Ref}} from {{.BusinessName}} ({{.RequesterEmail}})
+
+Subject: {{.Subject}}
+
+"{{.Excerpt}}"
+
+{{.TicketURL}}
+{{end}}

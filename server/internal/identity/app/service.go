@@ -67,6 +67,7 @@ type Auth struct {
 	DeviceToken      string // set when this device should be remembered
 	User             *domain.User
 	TenantName       string
+	TenantSuspended  bool
 	SessionID        string
 }
 
@@ -129,6 +130,9 @@ func (s *Service) mail(ctx context.Context, to, template, category string, data 
 
 // issue creates a session and its tokens for u.
 func (s *Service) issue(ctx context.Context, u *domain.User, method domain.AuthMethod, c Client) (*Auth, error) {
+	if u.Disabled() {
+		return nil, domain.ErrDisabled
+	}
 	now := s.now()
 	refresh := ids.SecretBase32(32)
 	sess := &domain.Session{
@@ -150,9 +154,13 @@ func (s *Service) issue(ctx context.Context, u *domain.User, method domain.AuthM
 	if err != nil {
 		return nil, err
 	}
+	suspended, err := s.tenants.TenantSuspended(ctx, u.TenantID)
+	if err != nil {
+		return nil, err
+	}
 	s.event(ctx, u, domain.EventLogin, c, map[string]string{"method": string(method), "session_id": sess.ID})
 	return &Auth{AccessToken: access, AccessExpiresAt: exp, RefreshToken: refresh, RefreshExpiresAt: sess.ExpiresAt,
-		User: u, TenantName: name, SessionID: sess.ID}, nil
+		User: u, TenantName: name, TenantSuspended: suspended, SessionID: sess.ID}, nil
 }
 
 func (s *Service) trustDevice(ctx context.Context, u *domain.User, c Client) (string, error) {
@@ -192,14 +200,18 @@ func (s *Service) Authenticate(ctx context.Context, bearer string) (auth.Princip
 		return auth.Principal{}, invalid
 	}
 	sess, u, err := s.repo.GetActiveSession(ctx, sessionID, s.now())
-	if notFound(err) || (err == nil && (sess.UserID != userID || u.TenantID != tenantID)) {
+	if notFound(err) || (err == nil && (sess.UserID != userID || u.TenantID != tenantID || u.Disabled())) {
 		return auth.Principal{}, invalid
 	}
 	if err != nil {
 		return auth.Principal{}, err
 	}
+	suspended, err := s.tenants.TenantSuspended(ctx, tenantID)
+	if err != nil {
+		return auth.Principal{}, err
+	}
 	return auth.Principal{Kind: auth.KindUser, TenantID: tenantID, UserID: userID, SessionID: sessionID,
-		EmailVerified: u.Verified()}, nil
+		EmailVerified: u.Verified(), Suspended: suspended}, nil
 }
 
 // OwnerContact returns a tenant owner's email for notifications.

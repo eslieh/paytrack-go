@@ -9,6 +9,7 @@ import "time"
 const (
 	TopicSTKCallbacks  = "mpesa.stk-callbacks.v1"
 	TopicPaymentEvents = "payment.events.v1"
+	TopicNotifications = "notifications.v1"
 )
 
 // STKCallback is a normalized Daraja STK push result, published by the
@@ -90,3 +91,23 @@ const (
 	EmailPayments   = "payments"
 	EmailOperations = "operations"
 )
+
+// Notification asks the inbox module to tell someone something: by email,
+// in the dashboard's notification bell, or both. Modules publish it through
+// the outbox in the same transaction as the change it describes, so a saved
+// reply always produces its email. ID makes delivery idempotent.
+type Notification struct {
+	ID       string `json:"id"`
+	TenantID string `json:"tenant_id,omitempty"` // whose dashboard; empty for staff-only alerts
+	UserID   string `json:"user_id,omitempty"`   // one user; empty means everyone in the tenant
+	Email    *Email `json:"email,omitempty"`
+	InApp    *InApp `json:"in_app,omitempty"`
+}
+
+// InApp is a dashboard notification.
+type InApp struct {
+	Kind  string `json:"kind"`  // e.g. "support.reply", "account.suspended"
+	Title string `json:"title"` //
+	Body  string `json:"body,omitempty"`
+	Link  string `json:"link,omitempty"` // dashboard path, e.g. /dashboard/support/tkt_…
+}

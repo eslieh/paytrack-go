@@ -164,8 +164,8 @@ function NewChannelModal({ onClose, onCreated }) {
                   </select>
                 ) : <Skeleton h={44} r={10} />}
               </Field>
-              <Field label="Account number" hint="The bank account credited, up to 12 characters">
-                <input className="input" maxLength={12} value={form.account_number} onChange={set("account_number")} required />
+              <Field label="Account number" hint="The bank account credited, up to 20 characters">
+                <input className="input" maxLength={20} value={form.account_number} onChange={set("account_number")} required />
               </Field>
             </>
           )}
@@ -178,7 +178,7 @@ function NewChannelModal({ onClose, onCreated }) {
 
           {form.type === "paybill" && (
             <Field label="Default account number" hint="Optional. Used when a payment doesn't set its own account reference.">
-              <input className="input" maxLength={12} value={form.account_number} onChange={set("account_number")} />
+              <input className="input" maxLength={20} value={form.account_number} onChange={set("account_number")} />
             </Field>
           )}
         </div>

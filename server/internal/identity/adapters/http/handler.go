@@ -119,8 +119,9 @@ func toUser(u *domain.User) userView {
 }
 
 type tenantView struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Suspended bool   `json:"suspended"` // dashboard is read-only
 }
 
 type sessionView struct {
@@ -134,7 +135,7 @@ type sessionView struct {
 // tokens as httpOnly cookies.
 func (h *Handler) signedIn(w http.ResponseWriter, a *app.Auth, status int) {
 	h.setCookies(w, a)
-	httpx.JSON(w, status, sessionView{a.AccessToken, a.AccessExpiresAt, toUser(a.User), tenantView{a.User.TenantID, a.TenantName}})
+	httpx.JSON(w, status, sessionView{a.AccessToken, a.AccessExpiresAt, toUser(a.User), tenantView{a.User.TenantID, a.TenantName, a.TenantSuspended}})
 }
 
 func (h *Handler) setCookies(w http.ResponseWriter, a *app.Auth) {
@@ -331,7 +332,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, r, err)
 			return
 		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"tenant": tenantView{p.TenantID, name}, "user": nil, "auth_kind": p.Kind})
+		httpx.JSON(w, http.StatusOK, map[string]any{"tenant": tenantView{p.TenantID, name, false}, "user": nil, "auth_kind": p.Kind})
 		return
 	}
 	prof, err := h.svc.Me(r.Context(), p)
@@ -344,7 +345,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		idents = append(idents, map[string]any{"provider": i.Provider, "email": i.Email, "linked_at": i.CreatedAt})
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{
-		"tenant": tenantView{prof.User.TenantID, prof.TenantName}, "user": toUser(prof.User),
+		"tenant": tenantView{prof.User.TenantID, prof.TenantName, p.Suspended}, "user": toUser(prof.User),
 		"auth_kind": p.Kind, "identities": idents, "google_enabled": h.svc.GoogleEnabled(),
 	})
 }

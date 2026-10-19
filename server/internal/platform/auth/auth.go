@@ -17,6 +17,7 @@ type Kind string
 const (
 	KindUser   Kind = "user"    // dashboard session (JWT)
 	KindAPIKey Kind = "api_key" // tenant backend
+	KindStaff  Kind = "staff"   // platform admin (cookie session on /admin/v1)
 )
 
 type Principal struct {
@@ -26,6 +27,10 @@ type Principal struct {
 	SessionID     string // set for KindUser
 	EmailVerified bool   // set for KindUser
 	APIKeyID      string // set for KindAPIKey
+	StaffID       string // set for KindStaff
+	// Suspended is set for dashboard sessions of a suspended tenant (API keys
+	// of a suspended tenant are rejected outright).
+	Suspended bool
 }
 
 // AuthenticatorFunc adapts a function to Authenticator.
@@ -93,6 +98,23 @@ func RequireVerified(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// ReadOnlyWhenSuspended lets a suspended tenant's dashboard read but not
+// change anything, except on paths allow accepts (signing out, account
+// security, support).
+func ReadOnlyWhenSuspended(allow func(*http.Request) bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			p, _ := FromContext(r.Context())
+			if p.Suspended && r.Method != http.MethodGet && r.Method != http.MethodHead && !allow(r) {
+				httpx.WriteError(w, r, errs.Forbidden("tenant_suspended",
+					"this account is suspended and is read-only; contact support"))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // MustTenant returns the tenant ID of the authenticated principal.

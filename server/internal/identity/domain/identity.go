@@ -24,12 +24,34 @@ type User struct {
 	EmailVerifiedAt *time.Time
 	TwoStepEnabled  bool
 	LastLoginAt     *time.Time
+	DisabledAt      *time.Time // set by a platform admin; blocks sign-in
+	DisabledReason  string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }
 
 func (u *User) Verified() bool    { return u.EmailVerifiedAt != nil }
 func (u *User) HasPassword() bool { return u.PasswordHash != "" }
+func (u *User) Disabled() bool    { return u.DisabledAt != nil }
+
+// ErrDisabled is returned wherever a disabled user would otherwise sign in.
+var ErrDisabled = errs.Forbidden("account_disabled", "this account has been disabled; contact support")
+
+func (u *User) Disable(reason string, at time.Time) error {
+	if u.Disabled() {
+		return errs.Conflict("already_disabled", "user is already disabled")
+	}
+	u.DisabledAt, u.DisabledReason, u.UpdatedAt = &at, reason, at
+	return nil
+}
+
+func (u *User) Enable(at time.Time) error {
+	if !u.Disabled() {
+		return errs.Conflict("not_disabled", "user is not disabled")
+	}
+	u.DisabledAt, u.DisabledReason, u.UpdatedAt = nil, "", at
+	return nil
+}
 
 func NormalizeEmail(s string) (string, error) {
 	s = strings.ToLower(strings.TrimSpace(s))
@@ -193,6 +215,8 @@ const (
 	EventTwoStepDisabled = "two_step_disabled"
 	EventGoogleLinked    = "google_linked"
 	EventGoogleUnlinked  = "google_unlinked"
+	EventAccountDisabled = "account_disabled" // by a platform admin
+	EventAccountEnabled  = "account_enabled"  //
 )
 
 // MaskEmail renders j•••@gmail.com for "we sent a code to" messages.

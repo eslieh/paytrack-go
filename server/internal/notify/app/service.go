@@ -69,12 +69,18 @@ type Mailer interface {
 	Enqueue(ctx context.Context, e contracts.Email) error
 }
 
+// Inbox posts dashboard notifications (the inbox module).
+type Inbox interface {
+	Deliver(ctx context.Context, n contracts.Notification) error
+}
+
 type Service struct {
 	repo        Repository
 	targets     TargetProvider
 	sender      Sender
 	prefs       PrefsProvider
 	mailer      Mailer
+	inbox       Inbox // optional
 	appURL      string
 	concurrency int
 	now         func() time.Time
@@ -83,6 +89,19 @@ type Service struct {
 func NewService(repo Repository, targets TargetProvider, sender Sender, prefs PrefsProvider, mailer Mailer, appURL string) *Service {
 	return &Service{repo: repo, targets: targets, sender: sender, prefs: prefs, mailer: mailer, appURL: appURL,
 		concurrency: 16, now: time.Now}
+}
+
+// Wire connects the optional dashboard inbox.
+func (s *Service) Wire(inbox Inbox) { s.inbox = inbox }
+
+// notifyDashboard posts an in-app notification; id makes it idempotent.
+func (s *Service) notifyDashboard(ctx context.Context, id, tenantID string, n contracts.InApp) {
+	if s.inbox == nil {
+		return
+	}
+	if err := s.inbox.Deliver(ctx, contracts.Notification{ID: id, TenantID: tenantID, InApp: &n}); err != nil {
+		slog.ErrorContext(ctx, "dashboard notification failed", "id", id, "err", err)
+	}
 }
 
 // Enqueue records a delivery for a payment event (idempotent per event ID).

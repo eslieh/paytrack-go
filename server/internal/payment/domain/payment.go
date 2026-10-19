@@ -134,7 +134,7 @@ type NewParams struct {
 var (
 	phoneRe      = regexp.MustCompile(`^254(7|1)\d{8}$`)
 	nonDigitRe   = regexp.MustCompile(`\D`)
-	accountRefRe = regexp.MustCompile(`^[A-Za-z0-9\-_/. ]{1,12}$`)
+	accountRefRe = regexp.MustCompile(`^[A-Za-z0-9\-_/. ]{1,20}$`)
 )
 
 // NormalizePhone accepts 07xx, 7xx, +2547xx, 2547xx (and 01xx variants) and
@@ -218,7 +218,7 @@ func accountReference(d Destination, requested string) (string, error) {
 		return "", errs.Invalid("invalid_destination", "unknown channel type")
 	}
 	if !accountRefRe.MatchString(requested) {
-		return "", errs.Invalid("invalid_account_reference", "account_reference must be 1-12 characters: letters, digits, space and -_/.")
+		return "", errs.Invalid("invalid_account_reference", "account_reference must be 1-20 characters: letters, digits, space and -_/.")
 	}
 	return requested, nil
 }

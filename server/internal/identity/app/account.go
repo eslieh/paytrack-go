@@ -117,7 +117,7 @@ func (s *Service) ForgotPassword(ctx context.Context, email string, c Client) er
 		return nil // silently drop; same response as success
 	}
 	u, err := s.repo.GetUserByEmail(ctx, email)
-	if err != nil {
+	if err != nil || u.Disabled() {
 		return nil
 	}
 	now := s.now()
@@ -165,6 +165,9 @@ func (s *Service) ResetPassword(ctx context.Context, raw, newPassword string, c 
 	u, err := s.repo.GetUser(ctx, t.UserID)
 	if err != nil {
 		return nil, err
+	}
+	if u.Disabled() {
+		return nil, domain.ErrDisabled
 	}
 	if u.PasswordHash, err = s.hasher.Hash(newPassword); err != nil {
 		return nil, err

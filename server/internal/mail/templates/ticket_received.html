@@ -1,0 +1,19 @@
+{{define "subject"}}We've received your request {{.Ref}}: {{.Subject}}{{end}}
+{{define "preheader"}}Our team will get back to you soon.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">We've got your request</h1>
+<p style="%%P%%">Thanks for getting in touch. Your ticket <strong style="color:%%fg%%;">{{.Ref}}</strong> is in our queue and we'll reply as soon as we can. We'll email you when we do.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="%%BOX%%margin:8px 0 20px 0;"><tr><td style="font-family:%%font%%;font-size:14px;line-height:1.7;color:%%fg%%;">
+  <div style="%%LABEL%%">Subject</div><div>{{.Subject}}</div>
+  <div style="%%LABEL%%margin-top:8px;">Your message</div><div style="color:%%muted%%;">{{.Excerpt}}</div>
+</td></tr></table>
+{{template "button" (dict "URL" .TicketURL "Label" "View ticket")}}
+{{end}}
+{{define "text"}}We've received your request {{.Ref}}: {{.Subject}}
+
+Your ticket is in our queue and we'll reply as soon as we can.
+
+"{{.Excerpt}}"
+
+View it: {{.TicketURL}}
+{{end}}

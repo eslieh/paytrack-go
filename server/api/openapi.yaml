@@ -18,6 +18,9 @@ info:
 
     Endpoints marked *user session only* reject API keys with 403. Endpoints marked
     *verified* reject dashboard sessions whose email is not verified (`email_not_verified`).
+    A suspended account's API keys are rejected with 403 `tenant_suspended`. Its dashboard
+    sessions stay read-only: writes other than `/v1/auth/*`, `/v1/me/*` and `/v1/support/*` return 403
+    `tenant_suspended`. Disabled users get 403 `account_disabled` when signing in.
     Sign-in, code, reset and sign-up endpoints are rate limited (429 `rate_limited`).
 
     **Errors** always use `{"error": {"code", "message", "request_id"}}`.
@@ -456,7 +459,7 @@ paths:
                 type: { type: string, enum: [bank, paybill, till] }
                 bank_code: { type: string, description: "Required for bank" }
                 business_number: { type: string, pattern: "^\\d{5,7}$", description: "Required for paybill and till" }
-                account_number: { type: string, maxLength: 12, description: "Required for bank; optional default for paybill; ignored for till" }
+                account_number: { type: string, maxLength: 20, description: "Required for bank; optional default for paybill; ignored for till" }
       responses:
         "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Channel" } } } }
         "422": { $ref: "#/components/responses/Error" }
@@ -523,6 +526,95 @@ paths:
       responses:
         "202": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/Delivery" } } } }
 
+  /v1/support/tickets:
+    get:
+      tags: [support]
+      summary: List your support tickets (user session only)
+      parameters: [{ $ref: "#/components/parameters/cursor" }, { $ref: "#/components/parameters/limit" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties: { data: { type: array, items: { $ref: "#/components/schemas/Ticket" } } }
+    post:
+      tags: [support]
+      summary: Open a support ticket (user session only; allowed while suspended)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, body]
+              properties:
+                subject: { type: string, minLength: 3, maxLength: 150 }
+                category: { type: string, enum: [payments, channels, webhooks, api, account, billing, other], default: other }
+                body: { type: string, maxLength: 10000 }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Ticket" } } } }
+  /v1/support/tickets/{id}:
+    get:
+      tags: [support]
+      summary: A ticket and its messages
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket: { $ref: "#/components/schemas/Ticket" }
+                  messages: { type: array, items: { $ref: "#/components/schemas/TicketMessage" } }
+  /v1/support/tickets/{id}/messages:
+    post:
+      tags: [support]
+      summary: Reply on a ticket (reopens a resolved ticket; closed tickets return 409 ticket_closed)
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [body], properties: { body: { type: string } } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/TicketMessage" } } } }
+  /v1/support/tickets/{id}/rating:
+    post:
+      tags: [support]
+      summary: Rate a resolved ticket
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties: { rating: { type: integer, minimum: 1, maximum: 5 }, comment: { type: string, maxLength: 1000 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Ticket" } } } }
+  /v1/support/feedback:
+    post:
+      tags: [support]
+      summary: Send product feedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string, maxLength: 5000 }
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                page: { type: string, description: Dashboard page the feedback was sent from }
+      responses:
+        "204": { description: Received }
+
   /v1/payments:
     post:
       tags: [payments]
@@ -547,7 +639,7 @@ paths:
                 phone: { type: string, example: "0712345678" }
                 account_reference:
                   type: string
-                  maxLength: 12
+                  maxLength: 20
                   description: |
                     bank: omit (always the channel's account_number; a different value is rejected).
                     paybill: overrides the channel default; required if the channel has none.
@@ -619,6 +711,29 @@ components:
                   message: { type: string }
                   request_id: { type: string }
   schemas:
+    Ticket:
+      type: object
+      properties:
+        id: { type: string }
+        number: { type: integer, description: "Human reference, shown as #1042" }
+        subject: { type: string }
+        category: { type: string }
+        priority: { type: string, enum: [low, normal, high, urgent] }
+        status: { type: string, enum: [awaiting_staff, awaiting_user, resolved, closed] }
+        last_message_at: { type: string, format: date-time }
+        first_response_at: { type: string, format: date-time, nullable: true }
+        resolved_at: { type: string, format: date-time, nullable: true }
+        rating: { type: integer, nullable: true }
+        rating_comment: { type: string }
+        created_at: { type: string, format: date-time }
+    TicketMessage:
+      type: object
+      properties:
+        id: { type: string }
+        author_kind: { type: string, enum: [user, staff] }
+        author_name: { type: string, description: "Your email, or \"Paytrack Support\"" }
+        body: { type: string }
+        created_at: { type: string, format: date-time }
     Page:
       type: object
       properties:
@@ -626,7 +741,11 @@ components:
         next_cursor: { type: string }
     Tenant:
       type: object
-      properties: { id: { type: string }, name: { type: string }, created_at: { type: string, format: date-time } }
+      properties:
+        id: { type: string }
+        name: { type: string }
+        suspended: { type: boolean, description: "The account is suspended: API keys are paused and the dashboard is read-only." }
+        created_at: { type: string, format: date-time }
     User:
       type: object
       properties:

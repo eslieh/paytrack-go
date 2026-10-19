@@ -8,7 +8,7 @@ import styles from "./sidebar.module.css";
 
 // Sidebar is the dashboard's left navigation. Below 860px it collapses into
 // a top bar with a menu button that slides the panel in.
-export default function Sidebar({ brand, items, activeHref, account, onSignOut }) {
+export default function Sidebar({ brand, brandHref = "/dashboard", items, activeHref, account, onSignOut }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const navRef = useRef(null);
@@ -31,11 +31,11 @@ export default function Sidebar({ brand, items, activeHref, account, onSignOut }
         <button className={styles.menuBtn} onClick={() => setOpen((v) => !v)} aria-label={open ? "Close menu" : "Open menu"} aria-expanded={open}>
           {open ? <X size={18} /> : <Menu size={18} />}
         </button>
-        <Link href="/dashboard" className={styles.brand}>{brand}</Link>
+        <Link href={brandHref} className={styles.brand}>{brand}</Link>
       </header>
 
       <aside className={`${styles.sidebar} ${open ? styles.open : ""}`}>
-        <Link href="/dashboard" className={`${styles.brand} ${styles.sideBrand}`}>{brand}</Link>
+        <Link href={brandHref} className={`${styles.brand} ${styles.sideBrand}`}>{brand}</Link>
 
         <nav className={styles.nav} ref={navRef}>
           {pill && (

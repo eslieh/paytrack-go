@@ -111,8 +111,9 @@ func (r *Repo) GetTenant(ctx context.Context, id string) (*domain.Tenant, error)
 	var t domain.Tenant
 	var url *string
 	var secret []byte
-	err := r.pool.QueryRow(ctx, `SELECT id, name, webhook_url, webhook_secret_enc, created_at
-		FROM tenant.tenants WHERE id = $1`, id).Scan(&t.ID, &t.Name, &url, &secret, &t.CreatedAt)
+	err := r.pool.QueryRow(ctx, `SELECT id, name, webhook_url, webhook_secret_enc, status, suspended_at, suspended_reason, created_at
+		FROM tenant.tenants WHERE id = $1`, id).
+		Scan(&t.ID, &t.Name, &url, &secret, &t.Status, &t.SuspendedAt, &t.SuspendedReason, &t.CreatedAt)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -123,6 +124,21 @@ func (r *Repo) GetTenant(ctx context.Context, id string) (*domain.Tenant, error)
 		return nil, err
 	}
 	return &t, nil
+}
+
+func (r *Repo) GetTenantStatus(ctx context.Context, id string) (domain.Status, error) {
+	var st domain.Status
+	err := r.pool.QueryRow(ctx, `SELECT status FROM tenant.tenants WHERE id = $1`, id).Scan(&st)
+	return st, notFound(err)
+}
+
+func (r *Repo) SaveTenantStatus(ctx context.Context, t *domain.Tenant) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE tenant.tenants SET status = $2, suspended_at = $3, suspended_reason = $4,
+		updated_at = now() WHERE id = $1`, t.ID, t.Status, t.SuspendedAt, t.SuspendedReason)
+	if err == nil && tag.RowsAffected() == 0 {
+		return app.ErrNotFound
+	}
+	return err
 }
 
 func (r *Repo) UpdateWebhook(ctx context.Context, tenantID, url, secret string) error {

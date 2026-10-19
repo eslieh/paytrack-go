@@ -5,11 +5,17 @@ import (
 	"crypto/sha256"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/eslieh/paytrack-go/server/api"
+	adminhttp "github.com/eslieh/paytrack-go/server/internal/admin/adapters/http"
+	"github.com/eslieh/paytrack-go/server/internal/admin/adapters/identitylink"
+	adminpg "github.com/eslieh/paytrack-go/server/internal/admin/adapters/postgres"
+	adminapp "github.com/eslieh/paytrack-go/server/internal/admin/app"
 	callbackhttp "github.com/eslieh/paytrack-go/server/internal/callback/adapters/http"
 	callbackpg "github.com/eslieh/paytrack-go/server/internal/callback/adapters/postgres"
 	callbackapp "github.com/eslieh/paytrack-go/server/internal/callback/app"
@@ -19,6 +25,10 @@ import (
 	identitypg "github.com/eslieh/paytrack-go/server/internal/identity/adapters/postgres"
 	"github.com/eslieh/paytrack-go/server/internal/identity/adapters/security"
 	identityapp "github.com/eslieh/paytrack-go/server/internal/identity/app"
+	inboxhttp "github.com/eslieh/paytrack-go/server/internal/inbox/adapters/http"
+	inboxkafka "github.com/eslieh/paytrack-go/server/internal/inbox/adapters/kafka"
+	inboxpg "github.com/eslieh/paytrack-go/server/internal/inbox/adapters/postgres"
+	inboxapp "github.com/eslieh/paytrack-go/server/internal/inbox/app"
 	"github.com/eslieh/paytrack-go/server/internal/mail/adapters/logsender"
 	mailpg "github.com/eslieh/paytrack-go/server/internal/mail/adapters/postgres"
 	"github.com/eslieh/paytrack-go/server/internal/mail/adapters/resend"
@@ -45,6 +55,10 @@ import (
 	"github.com/eslieh/paytrack-go/server/internal/platform/outbox"
 	"github.com/eslieh/paytrack-go/server/internal/platform/ratelimit"
 	"github.com/eslieh/paytrack-go/server/internal/platform/run"
+	"github.com/eslieh/paytrack-go/server/internal/support/adapters/accountlink"
+	supporthttp "github.com/eslieh/paytrack-go/server/internal/support/adapters/http"
+	supportpg "github.com/eslieh/paytrack-go/server/internal/support/adapters/postgres"
+	supportapp "github.com/eslieh/paytrack-go/server/internal/support/app"
 	tenanthttp "github.com/eslieh/paytrack-go/server/internal/tenant/adapters/http"
 	tenantpg "github.com/eslieh/paytrack-go/server/internal/tenant/adapters/postgres"
 	tenantapp "github.com/eslieh/paytrack-go/server/internal/tenant/app"
@@ -60,6 +74,9 @@ type modules struct {
 	notify   *notifyapp.Service
 	callback *callbackapp.Service
 	mail     *mailapp.Service
+	admin    *adminapp.Service
+	support  *supportapp.Service
+	inbox    *inboxapp.Service
 	limiter  *ratelimit.Limiter
 }
 
@@ -119,6 +136,16 @@ func build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*module
 	m.tenants.Wire(m.identity, m.payments, m.mail, previewer{m.mail}, cfg.AppBaseURL)
 	m.notify = notifyapp.NewService(notifypg.New(pool), notifytenant.Targets{Tenants: m.tenants}, webhook.New(cfg.WebhookAllowPrivate),
 		notifytenant.Prefs{Tenants: m.tenants}, m.mail, cfg.AppBaseURL)
+	adminCodeKey := sha256.Sum256(append([]byte("paytrack-admin-code|"), cfg.EncryptionKey...))
+	m.admin, err = adminapp.NewService(adminpg.New(pool), security.Bcrypt{}, m.mail, m.limiter, m.tenants,
+		identitylink.Users{Identity: m.identity}, adminapp.Config{AppBaseURL: cfg.AppBaseURL, CodeKey: adminCodeKey[:]})
+	if err != nil {
+		return nil, err
+	}
+	m.support = supportapp.NewService(supportpg.New(pool), accountlink.Accounts{Identity: m.identity, Tenants: m.tenants},
+		m.limiter, supportapp.Config{AppBaseURL: cfg.AppBaseURL, StaffEmail: cfg.SupportNotifyEmail})
+	m.inbox = inboxapp.NewService(inboxpg.New(pool), m.mail)
+	m.notify.Wire(m.inbox)
 	return m, nil
 }
 
@@ -144,7 +171,7 @@ func runRole(ctx context.Context, role config.Role, cfg *config.Config) error {
 	}
 	runsWorker := role == config.RoleWorker || role == config.RoleAll
 	if runsWorker {
-		topics := []string{contracts.TopicSTKCallbacks, contracts.TopicPaymentEvents}
+		topics := []string{contracts.TopicSTKCallbacks, contracts.TopicPaymentEvents, contracts.TopicNotifications}
 		if err := kafka.EnsureTopics(ctx, cfg.KafkaBrokers, cfg.KafkaPartitions, cfg.KafkaReplicationFactor, topics...); err != nil {
 			return err
 		}
@@ -178,13 +205,25 @@ func health(mux *http.ServeMux, pool *pgxpool.Pool) {
 func apiHandler(cfg *config.Config, m *modules, pool *pgxpool.Pool) http.Handler {
 	mux := http.NewServeMux()
 	health(mux, pool)
+	api.Register(mux, cfg.APITrustXFF)
 	// API keys belong to tenants; everything else is a dashboard session.
-	authed := auth.Middleware(auth.AuthenticatorFunc(func(ctx context.Context, bearer string) (auth.Principal, error) {
+	authenticate := auth.Middleware(auth.AuthenticatorFunc(func(ctx context.Context, bearer string) (auth.Principal, error) {
 		if tenantapp.IsAPIKey(bearer) {
 			return m.tenants.AuthenticateAPIKey(ctx, bearer)
 		}
 		return m.identity.Authenticate(ctx, bearer)
 	}))
+	// A suspended tenant's dashboard is read-only, but its users can still
+	// sign out, manage their own account security and talk to support.
+	readOnly := auth.ReadOnlyWhenSuspended(func(r *http.Request) bool {
+		for _, prefix := range []string{"/v1/auth/", "/v1/me/", "/v1/support/", "/v1/notifications/"} {
+			if strings.HasPrefix(r.URL.Path, prefix) {
+				return true
+			}
+		}
+		return false
+	})
+	authed := func(h http.Handler) http.Handler { return authenticate(readOnly(h)) }
 	identityhttp.New(m.identity, m.tenants, identityhttp.Config{
 		CookieSecure: cfg.CookieSecure, TrustXFF: cfg.APITrustXFF, AllowedOrigins: cfg.CORSAllowedOrigins,
 		AppBaseURL: cfg.AppBaseURL, APIPublicPath: cfg.APIPublicPath,
@@ -193,6 +232,13 @@ func apiHandler(cfg *config.Config, m *modules, pool *pgxpool.Pool) http.Handler
 	tenanthttp.New(m.tenants, samples).Register(mux, authed)
 	paymenthttp.New(m.payments).Register(mux, authed)
 	notifyhttp.New(m.notify).Register(mux, authed)
+	admin := adminhttp.New(m.admin, adminhttp.Config{
+		CookieSecure: cfg.CookieSecure, TrustXFF: cfg.APITrustXFF, APIPublicPath: cfg.APIPublicPath,
+		AllowedCIDRs: cfg.AdminAllowedCIDRs,
+	})
+	admin.Register(mux)
+	supporthttp.New(m.support).Register(mux, authed, admin.Staff)
+	inboxhttp.New(m.inbox).Register(mux, authed)
 	return httpx.Chain(mux, httpx.Common, httpx.CORS(cfg.CORSAllowedOrigins))
 }
 
@@ -229,6 +275,10 @@ func startWorker(ctx context.Context, g *errgroup.Group, cfg *config.Config, m *
 	g.Go((&kafka.Consumer{
 		Brokers: cfg.KafkaBrokers, GroupID: "paytrack-notify", Topic: contracts.TopicPaymentEvents,
 		Handler: notifykafka.PaymentEventHandler(m.notify), DLQ: producer,
+	}).RunFunc(ctx))
+	g.Go((&kafka.Consumer{
+		Brokers: cfg.KafkaBrokers, GroupID: "paytrack-inbox", Topic: contracts.TopicNotifications,
+		Handler: inboxkafka.NotificationHandler(m.inbox), DLQ: producer,
 	}).RunFunc(ctx))
 	g.Go(func() error { return run.Poll(ctx, "reconciler", 5*time.Second, m.payments.Reconcile) })
 	g.Go(func() error { return run.Poll(ctx, "webhook-dispatcher", time.Second, m.notify.Dispatch) })

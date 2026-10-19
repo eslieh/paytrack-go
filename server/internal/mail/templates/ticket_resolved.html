@@ -1,0 +1,14 @@
+{{define "subject"}}{{.Ref}} has been resolved{{end}}
+{{define "preheader"}}How did we do? Rate your support experience.{{end}}
+{{define "content"}}
+<h1 style="%%H1%%">Your request has been resolved</h1>
+<p style="%%P%%">We've marked <strong style="color:%%fg%%;">{{.Ref}} · {{.Subject}}</strong> as resolved. If anything is still wrong, just reply on the ticket and it will reopen.</p>
+<p style="%%P%%">How did we do? A quick rating helps us improve.</p>
+{{template "button" (dict "URL" .TicketURL "Label" "Rate this ticket")}}
+{{end}}
+{{define "text"}}{{.Ref}} has been resolved: {{.Subject}}
+
+If anything is still wrong, reply on the ticket and it will reopen.
+
+Rate your experience: {{.TicketURL}}
+{{end}}

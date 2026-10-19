@@ -86,6 +86,15 @@ export async function apiFetch(path, { auth = true, ...options } = {}) {
   return data;
 }
 
+// adminFetch calls the admin portal API. Staff sessions live in an httpOnly
+// cookie scoped to /api/admin; writes must carry the X-Paytrack-Admin header.
+async function adminFetch(path, options = {}) {
+  const { res, data } = await send(path, { ...options, headers: { "X-Paytrack-Admin": "1", ...(options.headers || {}) } });
+  if (res.status === 401 && typeof window !== "undefined") window.dispatchEvent(new Event("paytrack:admin-unauthorized"));
+  if (!res.ok) throw toError(res, data);
+  return data;
+}
+
 // getBaseUrl is the public API URL tenant backends call directly (docs, samples).
 export function getBaseUrl() {
   return PUBLIC_API_URL;
@@ -110,6 +119,37 @@ const enc = encodeURIComponent;
 const pub = { auth: false };
 
 export const api = {
+  admin: {
+    // Returns {challenge: {id, masked_email, expires_at}}; the code is emailed.
+    login: (email, password) => adminFetch("/admin/v1/auth/login", { method: "POST", body: { email, password } }),
+    verify: (challenge_id, code) => adminFetch("/admin/v1/auth/verify", { method: "POST", body: { challenge_id, code } }),
+    logout: () => adminFetch("/admin/v1/auth/logout", { method: "POST" }),
+    me: () => adminFetch("/admin/v1/me"),
+    auditLog: (params = {}) => adminFetch(`/admin/v1/audit-log${qs(params)}`),
+    suspendTenant: (id, reason) => adminFetch(`/admin/v1/tenants/${enc(id)}/suspend`, { method: "POST", body: { reason } }),
+    reinstateTenant: (id, reason) => adminFetch(`/admin/v1/tenants/${enc(id)}/reinstate`, { method: "POST", body: { reason } }),
+    disableUser: (id, reason) => adminFetch(`/admin/v1/users/${enc(id)}/disable`, { method: "POST", body: { reason } }),
+    enableUser: (id, reason) => adminFetch(`/admin/v1/users/${enc(id)}/enable`, { method: "POST", body: { reason } }),
+    support: {
+      summary: () => adminFetch("/admin/v1/support/summary"),
+      list: (params = {}) => adminFetch(`/admin/v1/support/tickets${qs(params)}`),
+      get: (id) => adminFetch(`/admin/v1/support/tickets/${enc(id)}`),
+      reply: (id, body, internal = false) => adminFetch(`/admin/v1/support/tickets/${enc(id)}/messages`, { method: "POST", body: { body, internal } }),
+      // patch: {status?, priority?}
+      update: (id, patch) => adminFetch(`/admin/v1/support/tickets/${enc(id)}`, { method: "PATCH", body: patch }),
+      feedback: (params = {}) => adminFetch(`/admin/v1/support/feedback${qs(params)}`),
+    },
+  },
+
+  support: {
+    list: (params = {}) => apiFetch(`/v1/support/tickets${qs(params)}`),
+    create: (body) => apiFetch("/v1/support/tickets", { method: "POST", body }),
+    get: (id) => apiFetch(`/v1/support/tickets/${enc(id)}`),
+    reply: (id, body) => apiFetch(`/v1/support/tickets/${enc(id)}/messages`, { method: "POST", body: { body } }),
+    rate: (id, rating, comment) => apiFetch(`/v1/support/tickets/${enc(id)}/rating`, { method: "POST", body: { rating, comment } }),
+    feedback: (body) => apiFetch("/v1/support/feedback", { method: "POST", body }),
+  },
+
   auth: {
     providers: () => apiFetch("/v1/auth/providers", pub),
     register: (body) => apiFetch("/v1/auth/register", { method: "POST", body, ...pub }),

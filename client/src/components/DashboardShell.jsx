@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { PageSkeleton } from "./ui.jsx";
 import { usePathname, useRouter } from "next/navigation";
-import { CreditCard, KeyRound, LayoutDashboard, MailWarning, Settings, Waypoints, Webhook } from "lucide-react";
+import Link from "next/link";
+import { Ban, CreditCard, KeyRound, LayoutDashboard, LifeBuoy, MailWarning, Settings, Waypoints, Webhook } from "lucide-react";
 import { api } from "../lib/api";
 import Sidebar from "./Sidebar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -17,6 +18,7 @@ const NAV = [
   { label: "Channels", href: "/dashboard/channels", icon: Waypoints },
   { label: "Webhooks", href: "/dashboard/webhooks", icon: Webhook },
   { label: "API Keys", href: "/dashboard/api-keys", icon: KeyRound },
+  { label: "Support", href: "/dashboard/support", icon: LifeBuoy },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
@@ -35,6 +37,16 @@ function VerifyBanner({ email }) {
         {state === "sent" ? "Link sent" : state === "sending" ? <Busy>Sending…</Busy> : "Resend link"}
       </button>
       {!["idle", "sending", "sent"].includes(state) && <span>{state}</span>}
+    </div>
+  );
+}
+
+// SuspendedBanner explains why changes fail while the tenant is suspended.
+function SuspendedBanner() {
+  return (
+    <div className={styles.notice} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fef3f2", borderColor: "#fecdca", color: "#912018" }}>
+      <Ban size={18} />
+      <span>This account is suspended. Your dashboard is read-only and your API keys are paused; payments already in progress will still complete. Check your email for details, or <Link href="/dashboard/support" style={{ color: "inherit", fontWeight: 600 }}>contact support</Link>.</span>
     </div>
   );
 }
@@ -64,7 +76,8 @@ export default function DashboardShell({ children }) {
       <main className={styles.main}>
         {loading || !token ? <PageSkeleton /> : (
           <>
-            {user && !user.email_verified && <VerifyBanner email={user.email} />}
+            {tenant?.suspended && <SuspendedBanner />}
+            {user && !user.email_verified && !tenant?.suspended && <VerifyBanner email={user.email} />}
             {children}
           </>
         )}

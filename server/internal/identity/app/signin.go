@@ -114,6 +114,9 @@ func (s *Service) Login(ctx context.Context, email, password string, c Client, d
 		s.event(ctx, u, domain.EventLoginFailed, c, nil)
 		return nil, invalid
 	}
+	if u.Disabled() {
+		return nil, domain.ErrDisabled
+	}
 	trusted := s.isTrusted(ctx, u, deviceToken)
 	if u.TwoStepEnabled && !trusted {
 		ch, err := s.startChallenge(ctx, u, c)
@@ -285,6 +288,9 @@ func (s *Service) Refresh(ctx context.Context, refresh string, c Client) (*Auth,
 	if err != nil {
 		return nil, err
 	}
+	if u.Disabled() {
+		return nil, invalid
+	}
 	access, exp, err := s.tokens.Issue(u.ID, u.TenantID, sess.ID)
 	if err != nil {
 		return nil, err
@@ -293,8 +299,12 @@ func (s *Service) Refresh(ctx context.Context, refresh string, c Client) (*Auth,
 	if err != nil {
 		return nil, err
 	}
+	suspended, err := s.tenants.TenantSuspended(ctx, u.TenantID)
+	if err != nil {
+		return nil, err
+	}
 	return &Auth{AccessToken: access, AccessExpiresAt: exp, RefreshToken: next, RefreshExpiresAt: sess.ExpiresAt,
-		User: u, TenantName: name, SessionID: sess.ID}, nil
+		User: u, TenantName: name, TenantSuspended: suspended, SessionID: sess.ID}, nil
 }
 
 // Logout revokes the caller's session, found by access token or refresh cookie.

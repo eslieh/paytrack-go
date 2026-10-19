@@ -17,6 +17,9 @@ type Repository interface {
 	CreateTenant(ctx context.Context, t *domain.Tenant) error
 	GetTenant(ctx context.Context, id string) (*domain.Tenant, error)
 	UpdateWebhook(ctx context.Context, tenantID, url, secret string) error
+	// GetTenantStatus is the cheap per-request check (no secret decryption).
+	GetTenantStatus(ctx context.Context, id string) (domain.Status, error)
+	SaveTenantStatus(ctx context.Context, t *domain.Tenant) error
 	ListTenantsCreatedBetween(ctx context.Context, from, to time.Time) ([]*domain.Tenant, error)
 
 	GetNotificationSettings(ctx context.Context, tenantID string) (domain.NotificationSettings, error)

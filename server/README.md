@@ -3,7 +3,7 @@
 A multi-tenant M-Pesa STK push router. Tenants register payment destinations (a bank account, a PayBill, or a Till). PayTrack sends STK pushes with the platform's Daraja app, routing the money to the tenant's destination, and their backends receive signed webhooks with the outcome.
 
 - Design and HA notes: [ARCHITECTURE.md](ARCHITECTURE.md)
-- API contract (for the frontend and tenant integrations): [api/openapi.yaml](api/openapi.yaml)
+- API contract (for the frontend and tenant integrations): [api/openapi.yaml](api/openapi.yaml), also served by the API at `GET /openapi.json` and `GET /openapi.yaml`
 - The original single-tenant demo is kept in [legacy/mpesastk](legacy/mpesastk)
 
 ## Run locally

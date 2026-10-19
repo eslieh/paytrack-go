@@ -67,6 +67,12 @@ func (s *Service) EmailOnPaymentEvent(ctx context.Context, ev contracts.PaymentE
 var eat = time.FixedZone("EAT", 3*60*60)
 
 func (s *Service) alertWebhookFailed(ctx context.Context, d *domain.Delivery, url string) {
+	// One alert per exhausted retry cycle (a manual redeliver starts a new one).
+	key := "webhook_failing:" + d.ID + ":" + strconv.FormatInt(d.UpdatedAt.Unix(), 10)
+	s.notifyDashboard(ctx, key, d.TenantID, contracts.InApp{
+		Kind: "webhook.failing", Title: "A webhook couldn't be delivered",
+		Body: d.EventType + " for " + d.PaymentID + ": " + d.LastError, Link: "/dashboard/webhooks",
+	})
 	pr, err := s.prefs.Prefs(ctx, d.TenantID)
 	if err != nil || !pr.WebhookFailureAlerts || pr.Recipient == "" {
 		return
@@ -80,8 +86,7 @@ func (s *Service) alertWebhookFailed(ctx context.Context, d *domain.Delivery, ur
 			"BusinessName": pr.BusinessName, "WebhookURL": url, "EventType": d.EventType, "PaymentID": d.PaymentID,
 			"Attempts": d.Attempts, "LastError": d.LastError, "DeliveriesURL": s.appURL + "/dashboard/webhooks",
 		},
-		// One alert per exhausted retry cycle (a manual redeliver starts a new one).
-		DedupeKey: "webhook_failing:" + d.ID + ":" + strconv.FormatInt(d.UpdatedAt.Unix(), 10),
+		DedupeKey: key,
 	}); err != nil {
 		slog.ErrorContext(ctx, "webhook alert email failed", "delivery_id", d.ID, "err", err)
 	}

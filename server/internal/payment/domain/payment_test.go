@@ -43,7 +43,7 @@ func TestNewValidates(t *testing.T) {
 	cases := map[string]func(*NewParams){
 		"zero amount": func(p *NewParams) { p.Amount = 0 },
 		"too much":    func(p *NewParams) { p.Amount = MaxAmount + 1 },
-		"long ref":    func(p *NewParams) { p.AccountReference = "1234567890123" },
+		"long ref":    func(p *NewParams) { p.AccountReference = "123456789012345678901" },
 		"long desc":   func(p *NewParams) { p.Description = "12345678901234" },
 		"bad phone":   func(p *NewParams) { p.Phone = "123" },
 	}

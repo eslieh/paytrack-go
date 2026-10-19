@@ -64,6 +64,8 @@ type Config struct {
 	ResendAPIKey string
 	EmailFrom    string
 	EmailReplyTo string
+	// SupportNotifyEmail receives new-ticket and customer-reply alerts; empty disables them.
+	SupportNotifyEmail string
 
 	CORSAllowedOrigins []string
 
@@ -78,6 +80,10 @@ type Config struct {
 	Mpesa MpesaConfig
 
 	WebhookAllowPrivate bool // allow webhook URLs that resolve to private IPs (dev only)
+
+	// AdminAllowedCIDRs restricts the admin portal API (/admin/v1) to these
+	// networks; empty allows any address.
+	AdminAllowedCIDRs []*net.IPNet
 
 	LogLevel slog.Level
 }
@@ -108,6 +114,7 @@ func Load(role Role) (*Config, error) {
 		ResendAPIKey:           os.Getenv("RESEND_API_KEY"),
 		EmailFrom:              env("EMAIL_FROM", "Paytrack <no-reply@localhost>"),
 		EmailReplyTo:           os.Getenv("EMAIL_REPLY_TO"),
+		SupportNotifyEmail:     os.Getenv("SUPPORT_NOTIFY_EMAIL"),
 		WebhookAllowPrivate:    os.Getenv("WEBHOOK_ALLOW_PRIVATE") == "true",
 		KafkaPartitions:        intEnv("KAFKA_PARTITIONS", 6),
 		KafkaReplicationFactor: intEnv("KAFKA_REPLICATION_FACTOR", 1),
@@ -177,12 +184,15 @@ func Load(role Role) (*Config, error) {
 		need("APP_BASE_URL (dashboard URL used in email links)", strings.HasPrefix(c.AppBaseURL, "http"))
 	}
 	if has(RoleCallback) {
-		for _, s := range list(os.Getenv("CALLBACK_ALLOWED_CIDRS")) {
-			_, n, err := net.ParseCIDR(s)
-			if err != nil {
-				return nil, fmt.Errorf("CALLBACK_ALLOWED_CIDRS: %w", err)
-			}
-			c.CallbackAllowedCIDRs = append(c.CallbackAllowedCIDRs, n)
+		var err error
+		if c.CallbackAllowedCIDRs, err = cidrs("CALLBACK_ALLOWED_CIDRS"); err != nil {
+			return nil, err
+		}
+	}
+	if has(RoleAPI) {
+		var err error
+		if c.AdminAllowedCIDRs, err = cidrs("ADMIN_ALLOWED_CIDRS"); err != nil {
+			return nil, err
 		}
 	}
 	if len(missing) > 0 {
@@ -193,6 +203,18 @@ func Load(role Role) (*Config, error) {
 		return nil, fmt.Errorf("LOG_LEVEL: %w", err)
 	}
 	return c, nil
+}
+
+func cidrs(name string) ([]*net.IPNet, error) {
+	var out []*net.IPNet
+	for _, s := range list(os.Getenv(name)) {
+		_, n, err := net.ParseCIDR(s)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+		out = append(out, n)
+	}
+	return out, nil
 }
 
 // normalizeDatabaseURL accepts SQLAlchemy-style URLs shared with Python

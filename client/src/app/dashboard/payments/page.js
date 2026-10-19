@@ -345,14 +345,14 @@ function NewPaymentModal({ channels, onClose, onCreated }) {
             <Field
               label="Account reference"
               hint={
-                refMode === "required" ? "Required: this PayBill has no default account. Up to 12 characters"
+                refMode === "required" ? "Required: this PayBill has no default account. Up to 20 characters"
                 : channel?.type === "paybill" ? `Optional, defaults to ${channel.account_number}`
-                : "Optional, up to 12 characters"
+                : "Optional, up to 20 characters"
               }
             >
               <input
                 className="input"
-                maxLength={12}
+                maxLength={20}
                 placeholder={channel?.type === "paybill" && channel.account_number ? channel.account_number : "ORDER123"}
                 value={form.account_reference}
                 onChange={set("account_reference")}

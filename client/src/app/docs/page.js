@@ -423,7 +423,17 @@ export default function DocsPage() {
               <div><span>Currency</span>KES, whole shillings</div>
               <div><span>Timestamps</span>RFC 3339, UTC</div>
               <div><span>IDs</span>Prefixed, time-sortable: <code>pay_</code>, <code>chn_</code>, <code>evt_</code>…</div>
+              <div>
+                <span>OpenAPI spec</span>
+                <a href={`${BASE}/openapi.json`} target="_blank" rel="noreferrer">openapi.json</a>
+                {" · "}
+                <a href={`${BASE}/openapi.yaml`} target="_blank" rel="noreferrer">openapi.yaml</a>
+              </div>
             </div>
+            <p>
+              Import the <a href={`${BASE}/openapi.json`} target="_blank" rel="noreferrer">OpenAPI 3.1 spec</a> into Postman, Insomnia or
+              Swagger UI, or generate a typed client from it.
+            </p>
           </div>
           <div className={styles.aside}>
             <Code title="Base URL" lang="sh" code={BASE} />
@@ -611,7 +621,7 @@ do {
             </p>
             <h3>Text limits</h3>
             <p>
-              <code>account_reference</code>: 1–12 characters, letters, digits, space and <code>-_/.</code>.
+              <code>account_reference</code>: 1–20 characters, letters, digits, space and <code>-_/.</code>.
               {" "}<code>description</code>: up to 13 characters. Both limits come from Safaricom.
             </p>
           </div>

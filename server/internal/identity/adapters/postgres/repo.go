@@ -37,12 +37,13 @@ func affected(tag interface{ RowsAffected() int64 }, err error) error {
 
 // ---------------------------------------------------------------- users
 
-const userCols = `id, tenant_id, email, password_hash, role, email_verified_at, two_step_enabled, last_login_at, created_at, updated_at`
+const userCols = `id, tenant_id, email, password_hash, role, email_verified_at, two_step_enabled, last_login_at,
+	disabled_at, disabled_reason, created_at, updated_at`
 
 func scanUser(row pgx.Row) (*domain.User, error) {
 	var u domain.User
 	err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Role, &u.EmailVerifiedAt, &u.TwoStepEnabled,
-		&u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt)
+		&u.LastLoginAt, &u.DisabledAt, &u.DisabledReason, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		return nil, nf(err)
 	}
@@ -50,8 +51,9 @@ func scanUser(row pgx.Row) (*domain.User, error) {
 }
 
 func (r *Repo) CreateUser(ctx context.Context, u *domain.User) error {
-	_, err := r.pool.Exec(ctx, `INSERT INTO identity.users (`+userCols+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		u.ID, u.TenantID, u.Email, u.PasswordHash, u.Role, u.EmailVerifiedAt, u.TwoStepEnabled, u.LastLoginAt, u.CreatedAt, u.UpdatedAt)
+	_, err := r.pool.Exec(ctx, `INSERT INTO identity.users (`+userCols+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		u.ID, u.TenantID, u.Email, u.PasswordHash, u.Role, u.EmailVerifiedAt, u.TwoStepEnabled, u.LastLoginAt,
+		u.DisabledAt, u.DisabledReason, u.CreatedAt, u.UpdatedAt)
 	if db.IsUniqueViolation(err, "users_email_key") {
 		return app.ErrEmailTaken
 	}
@@ -73,8 +75,8 @@ func (r *Repo) GetOwner(ctx context.Context, tenantID string) (*domain.User, err
 
 func (r *Repo) SaveUser(ctx context.Context, u *domain.User) error {
 	return affected(r.pool.Exec(ctx, `UPDATE identity.users SET email=$2, password_hash=$3, email_verified_at=$4,
-		two_step_enabled=$5, last_login_at=$6, updated_at=$7 WHERE id=$1`,
-		u.ID, u.Email, u.PasswordHash, u.EmailVerifiedAt, u.TwoStepEnabled, u.LastLoginAt, u.UpdatedAt))
+		two_step_enabled=$5, last_login_at=$6, disabled_at=$7, disabled_reason=$8, updated_at=$9 WHERE id=$1`,
+		u.ID, u.Email, u.PasswordHash, u.EmailVerifiedAt, u.TwoStepEnabled, u.LastLoginAt, u.DisabledAt, u.DisabledReason, u.UpdatedAt))
 }
 
 // ---------------------------------------------------------------- sessions
@@ -103,10 +105,10 @@ func (r *Repo) GetActiveSession(ctx context.Context, id string, now time.Time) (
 	var s domain.Session
 	var u domain.User
 	err := r.pool.QueryRow(ctx, `SELECT s.id, s.user_id, s.tenant_id, s.expires_at,
-			u.id, u.tenant_id, u.email, u.email_verified_at, u.two_step_enabled
+			u.id, u.tenant_id, u.email, u.email_verified_at, u.two_step_enabled, u.disabled_at
 		FROM identity.sessions s JOIN identity.users u ON u.id = s.user_id
 		WHERE s.id = $1 AND s.revoked_at IS NULL AND s.expires_at > $2`, id, now).
-		Scan(&s.ID, &s.UserID, &s.TenantID, &s.ExpiresAt, &u.ID, &u.TenantID, &u.Email, &u.EmailVerifiedAt, &u.TwoStepEnabled)
+		Scan(&s.ID, &s.UserID, &s.TenantID, &s.ExpiresAt, &u.ID, &u.TenantID, &u.Email, &u.EmailVerifiedAt, &u.TwoStepEnabled, &u.DisabledAt)
 	if err != nil {
 		return nil, nil, nf(err)
 	}
