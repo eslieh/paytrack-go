@@ -130,6 +130,17 @@ export const api = {
     reinstateTenant: (id, reason) => adminFetch(`/admin/v1/tenants/${enc(id)}/reinstate`, { method: "POST", body: { reason } }),
     disableUser: (id, reason) => adminFetch(`/admin/v1/users/${enc(id)}/disable`, { method: "POST", body: { reason } }),
     enableUser: (id, reason) => adminFetch(`/admin/v1/users/${enc(id)}/enable`, { method: "POST", body: { reason } }),
+    // kind: payments | webhooks | tenants | users | emails | support
+    stats: (kind, days = 30) => adminFetch(`/admin/v1/stats/${kind}${qs({ days })}`),
+    tenants: (params = {}) => adminFetch(`/admin/v1/tenants${qs(params)}`),
+    tenant: (id) => adminFetch(`/admin/v1/tenants/${enc(id)}`),
+    users: (params = {}) => adminFetch(`/admin/v1/users${qs(params)}`),
+    user: (id) => adminFetch(`/admin/v1/users/${enc(id)}`),
+    payments: (params = {}) => adminFetch(`/admin/v1/payments${qs(params)}`),
+    deliveries: (params = {}) => adminFetch(`/admin/v1/webhook-deliveries${qs(params)}`),
+    // action: send_password_reset | resend_verification | revoke_sessions | reset_two_step | unlink_google | clear_rate_limits
+    recover: (id, action, reason) => adminFetch(`/admin/v1/users/${enc(id)}/recover`, { method: "POST", body: { action, reason } }),
+    changeEmail: (id, email, reason) => adminFetch(`/admin/v1/users/${enc(id)}/change-email`, { method: "POST", body: { email, reason } }),
     support: {
       summary: () => adminFetch("/admin/v1/support/summary"),
       list: (params = {}) => adminFetch(`/admin/v1/support/tickets${qs(params)}`),
@@ -139,6 +150,13 @@ export const api = {
       update: (id, patch) => adminFetch(`/admin/v1/support/tickets/${enc(id)}`, { method: "PATCH", body: patch }),
       feedback: (params = {}) => adminFetch(`/admin/v1/support/feedback${qs(params)}`),
     },
+  },
+
+  inbox: {
+    list: (params = {}) => apiFetch(`/v1/notifications${qs(params)}`),
+    unreadCount: () => apiFetch("/v1/notifications/unread-count"),
+    markRead: (id) => apiFetch(`/v1/notifications/${enc(id)}/read`, { method: "POST" }),
+    markAllRead: () => apiFetch("/v1/notifications/read-all", { method: "POST" }),
   },
 
   support: {
@@ -217,6 +235,8 @@ export const api = {
     list: ({ status, channel_id, phone, cursor, limit } = {}) =>
       apiFetch(`/v1/payments${qs({ status, channel_id, phone, cursor, limit })}`),
     get: (id) => apiFetch(`/v1/payments/${enc(id)}`),
+    // checkStatus asks M-Pesa for the result now: {payment, outcome, message}.
+    checkStatus: (id) => apiFetch(`/v1/payments/${enc(id)}/check-status`, { method: "POST" }),
     // idempotencyKey must be stable across retries of the same charge.
     create: (payment, idempotencyKey) =>
       apiFetch("/v1/payments", { method: "POST", body: payment, headers: { "Idempotency-Key": idempotencyKey } }),

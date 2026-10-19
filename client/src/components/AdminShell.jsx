@@ -2,18 +2,19 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { History, Inbox, MessageSquareHeart } from "lucide-react";
+import { Building2, History, Inbox, LayoutDashboard, MessageSquareHeart } from "lucide-react";
 import { api } from "../lib/api";
 import Sidebar from "./Sidebar.jsx";
 import { PageSkeleton } from "./ui.jsx";
 import styles from "../app/dashboard/styles.module.css";
 import { startTopLoader } from "@/components/TopLoader.jsx";
 
-// Tenants, users and stats join this list in later phases.
 const NAV = [
+  { label: "Overview", href: "/admin", icon: LayoutDashboard },
+  { label: "Accounts", href: "/admin/tenants", icon: Building2 },
   { label: "Support", href: "/admin/support", icon: Inbox },
   { label: "Feedback", href: "/admin/feedback", icon: MessageSquareHeart },
-  { label: "Activity", href: "/admin", icon: History },
+  { label: "Activity", href: "/admin/activity", icon: History },
 ];
 
 const StaffContext = createContext(null);

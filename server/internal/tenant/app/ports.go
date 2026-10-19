@@ -14,6 +14,7 @@ var ErrNotFound = errors.New("not found")
 // Repository is the tenant module's persistence port. Implementations
 // encrypt WebhookSecret at rest.
 type Repository interface {
+	TenantStats(ctx context.Context, since time.Time) (*Stats, error)
 	CreateTenant(ctx context.Context, t *domain.Tenant) error
 	GetTenant(ctx context.Context, id string) (*domain.Tenant, error)
 	UpdateWebhook(ctx context.Context, tenantID, url, secret string) error
@@ -21,6 +22,7 @@ type Repository interface {
 	GetTenantStatus(ctx context.Context, id string) (domain.Status, error)
 	SaveTenantStatus(ctx context.Context, t *domain.Tenant) error
 	ListTenantsCreatedBetween(ctx context.Context, from, to time.Time) ([]*domain.Tenant, error)
+	ListTenants(ctx context.Context, f TenantFilter) ([]*domain.Tenant, error)
 
 	GetNotificationSettings(ctx context.Context, tenantID string) (domain.NotificationSettings, error)
 	SaveNotificationSettings(ctx context.Context, s domain.NotificationSettings) error
@@ -38,6 +40,14 @@ type Repository interface {
 	ListChannels(ctx context.Context, tenantID string) ([]*domain.Channel, error)
 	GetChannel(ctx context.Context, tenantID, id string) (*domain.Channel, error)
 	DeactivateChannel(ctx context.Context, tenantID, id string) error
+}
+
+// TenantFilter narrows the admin tenant search; zero fields match everything.
+type TenantFilter struct {
+	Query  string // name substring or exact tenant ID
+	Status domain.Status
+	Before string // id cursor
+	Limit  int
 }
 
 // Owners is the identity module, seen from tenant (owner contact details).

@@ -20,6 +20,7 @@ import (
 var ErrNotFound = errors.New("delivery not found")
 
 type Repository interface {
+	DeliveryStats(ctx context.Context, since time.Time) (*Stats, error)
 	// Create inserts d; a second delivery for the same event ID is ignored.
 	Create(ctx context.Context, d *domain.Delivery) error
 	Get(ctx context.Context, tenantID, id string) (*domain.Delivery, error)

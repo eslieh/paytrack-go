@@ -34,6 +34,7 @@ func (h *Handler) Register(mux *http.ServeMux, authed, staff func(http.Handler) 
 	mux.Handle("POST /admin/v1/support/tickets/{id}/messages", st(h.staffReply))
 	mux.Handle("PATCH /admin/v1/support/tickets/{id}", st(h.staffUpdate))
 	mux.Handle("GET /admin/v1/support/feedback", st(h.staffFeedback))
+	mux.Handle("GET /admin/v1/stats/support", st(httpx.StatsHandler(h.svc.Stats)))
 }
 
 // ---------------------------------------------------------------- views

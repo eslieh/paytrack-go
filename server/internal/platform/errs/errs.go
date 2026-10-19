@@ -18,6 +18,7 @@ const (
 	KindUnauthorized
 	KindForbidden
 	KindRateLimited
+	KindUnavailable // an upstream (e.g. Daraja) failed; retry later
 )
 
 type Error struct {
@@ -44,6 +45,7 @@ func Conflict(code, msg string) *Error     { return E(KindConflict, code, msg) }
 func Unauthorized(code, msg string) *Error { return E(KindUnauthorized, code, msg) }
 func Forbidden(code, msg string) *Error    { return E(KindForbidden, code, msg) }
 func RateLimited(msg string) *Error        { return E(KindRateLimited, "rate_limited", msg) }
+func Unavailable(code, msg string) *Error  { return E(KindUnavailable, code, msg) }
 
 // As extracts an *Error from err's chain.
 func As(err error) (*Error, bool) {

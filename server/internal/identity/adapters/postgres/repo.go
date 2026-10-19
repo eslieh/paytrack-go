@@ -73,6 +73,25 @@ func (r *Repo) GetOwner(ctx context.Context, tenantID string) (*domain.User, err
 		ORDER BY created_at LIMIT 1`, tenantID))
 }
 
+func (r *Repo) ListUsers(ctx context.Context, f app.UserFilter) ([]*domain.User, error) {
+	rows, err := r.pool.Query(ctx, `SELECT `+userCols+` FROM identity.users
+		WHERE ($1 = '' OR tenant_id = $1) AND ($2 = '' OR email ILIKE '%' || $2 || '%')
+		ORDER BY created_at DESC LIMIT $3`, f.TenantID, f.EmailQuery, f.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*domain.User
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 func (r *Repo) SaveUser(ctx context.Context, u *domain.User) error {
 	return affected(r.pool.Exec(ctx, `UPDATE identity.users SET email=$2, password_hash=$3, email_verified_at=$4,
 		two_step_enabled=$5, last_login_at=$6, disabled_at=$7, disabled_reason=$8, updated_at=$9 WHERE id=$1`,

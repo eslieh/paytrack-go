@@ -6,7 +6,7 @@ v1 scope: **C2B collections via STK push** (Lipa Na M-Pesa Online). Backend only
 
 ## Shape: hexagonal modular monolith
 
-This is one Go module and one container image. It has eight modules, each a hexagon (domain → app/ports → adapters), and each owns its own Postgres schema:
+This is one Go module and one container image. It has nine modules, each a hexagon (domain → app/ports → adapters), and each owns its own Postgres schema:
 
 | Module | Owns | Inbound adapters | Outbound adapters |
 |---|---|---|---|
@@ -17,7 +17,8 @@ This is one Go module and one container image. It has eight modules, each a hexa
 | `callback` | raw Daraja callback inbox | HTTP (public) | Postgres + outbox |
 | `notify` | webhook deliveries, retries; merchant receipt, first-payment and webhook-failure emails | Kafka (`payment.events.v1`), HTTP | Postgres, HTTP sender, tenant + mail (in-process) |
 | `support` | support tickets, message threads with staff-only internal notes, ratings, product feedback | HTTP (`/v1/support` for users, `/admin/v1/support` for staff) | Postgres, mail, rate limiter, identity + tenant (in-process) |
-| `admin` | platform staff, staff sessions and sign-in codes, audit log of staff actions; tenant suspension and user disabling | HTTP (`/admin/v1`), CLI (`create-admin`) | Postgres, bcrypt, mail, rate limiter, tenant + identity (in-process) |
+| `inbox` | dashboard notifications (the bell); delivers `notifications.v1` messages to email and the bell | Kafka (`notifications.v1`), HTTP, in-process `Deliver` (notify) | Postgres, mail (in-process) |
+| `admin` | platform staff, staff sessions and sign-in codes, audit log of staff actions; suspension, disabling, account recovery | HTTP (`/admin/v1`), CLI (`create-admin`) | Postgres, bcrypt, mail, rate limiter, tenant + identity (in-process) |
 
 Rules:
 - `domain` packages import nothing from adapters, Postgres, Kafka or HTTP.
@@ -36,6 +37,7 @@ server/
     notify/   {domain, app, adapters/{http,postgres,kafka,webhook,tenantlink}}
     admin/    {domain, app, adapters/{http,postgres,identitylink}}
     support/  {domain, app, adapters/{http,postgres,accountlink}}
+    inbox/    {domain, app, adapters/{http,postgres,kafka}}
   migrations/              embedded SQL
   api/openapi.yaml         contract for the frontend and tenant integrations
 ```
@@ -175,9 +177,20 @@ Two kinds of credential both resolve to a `tenant_id`, which scopes every query.
 - **Audit log:** `admin.audit_log` records every staff sign-in and account action, with the reason given, and is shown on the admin Activity page. Every account action requires a 5–500 character reason and emails the customer.
 - **Suspending a tenant:**
   - its API keys get 403 `tenant_suspended`
-  - its dashboard sessions are flagged `Suspended`, so `ReadOnlyWhenSuspended` rejects every non-GET request except `/v1/auth/*`, `/v1/me/*` and `/v1/support/*`
+  - its dashboard sessions are flagged `Suspended`, so `ReadOnlyWhenSuspended` rejects every non-GET request except `/v1/auth/*`, `/v1/me/*`, `/v1/support/*` and `/v1/notifications/*`
   - payments already in flight still complete, and their webhooks still go out
   - the owner is emailed (`tenant_suspended`, then `tenant_reinstated`)
+- **Staff routes:** the admin module owns the staff session check (`adminhttp.Handler.Staff`). Every module mounts its own staff-only reads behind it with `RegisterAdmin`: tenants, users, payments, webhook deliveries, the support queue, and `GET /admin/v1/stats/{payments,webhooks,tenants,users,emails,support}?days=`. Stats windows start at midnight Nairobi time, and daily buckets use Nairobi dates. Actions that change an account always go through the admin module, so they are audited.
+- **Account recovery** (`POST /admin/v1/users/{id}/recover` and `.../change-email`):
+  - recovery actions: send a password-reset link (staff never set passwords), resend verification, sign out everywhere, reset two-step, unlink Google (only if the user has a password), clear sign-in rate limits
+  - changing the email unverifies the account, ends every session, sends a verification link to the new address and warns the old one
+  - each action needs a reason; the audit entry and the customer's `account_notice` are written in one transaction
+- **Notifications (`notifications.v1`):**
+  - support and admin publish a `contracts.Notification` through the outbox, in the same transaction as the change; it can carry an email, a dashboard notification, or both
+  - the inbox consumer queues the email with dedupe key `ntf:<id>` and stores the bell item with `ON CONFLICT DO NOTHING`, so redelivery is harmless
+  - notify posts webhook-failure alerts to the bell in-process
+  - admin sign-in codes stay direct, so sign-in never waits on Kafka
+  - the dashboard polls `GET /v1/notifications/unread-count` every minute
 - **Support:**
   - tickets start `awaiting_staff`, a staff reply makes them `awaiting_user`, and a customer reply puts them back in the queue (reopening a `resolved` ticket)
   - `closed` tickets take no more replies
@@ -205,7 +218,8 @@ Two kinds of credential both resolve to a `tenant_id`, which scopes every query.
 | Payments | `payment_receipt`, sent to the merchant when **payment receipts** are on, at `receipt_email` or the owner's address | `payment.succeeded` in notify |
 | Operations | `webhook_failing`, when a delivery exhausts its retries (on by default) | notify dispatcher |
 | Admin (always sent) | `admin_login_code`, `tenant_suspended`, `tenant_reinstated`, `account_disabled`, `account_enabled` | admin use cases |
-| Support | `ticket_received`, `ticket_reply`, `ticket_resolved`, `support_staff_alert` | support use cases |
+| Support | `ticket_received`, `ticket_reply`, `ticket_resolved`, `support_staff_alert` | support use cases, via `notifications.v1` |
+| Account notices | `account_notice` (support signed you out, reset two-step, unlinked Google, changed your email) | admin recovery actions, via `notifications.v1` |
 
 Settings → Notifications shows a live preview of the real templates (`GET /v1/settings/notifications/preview`) and can send a test receipt.
 

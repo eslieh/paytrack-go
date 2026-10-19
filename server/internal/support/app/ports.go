@@ -14,6 +14,7 @@ var ErrNotFound = errors.New("not found")
 // Repository writes are transactional: the notifications passed in are
 // published through the outbox in the same transaction as the change.
 type Repository interface {
+	SupportStats(ctx context.Context, since time.Time) (*Stats, error)
 	// CreateTicket stores the ticket and its first message and sets t.Number.
 	// The notifications need that number, so they are built by build.
 	CreateTicket(ctx context.Context, t *domain.Ticket, first *domain.Message, build func() []contracts.Notification) error

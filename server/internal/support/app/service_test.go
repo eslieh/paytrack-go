@@ -62,6 +62,7 @@ func (r *memRepo) ListMessages(_ context.Context, ticketID string, internal bool
 	return out, nil
 }
 func (r *memRepo) CountByStatus(context.Context) (map[domain.Status]int, error) { return nil, nil }
+func (r *memRepo) SupportStats(context.Context, time.Time) (*Stats, error)      { return &Stats{}, nil }
 func (r *memRepo) CreateFeedback(_ context.Context, f *domain.Feedback) error {
 	r.feedback = append(r.feedback, f)
 	return nil

@@ -43,7 +43,26 @@ func toView(d *domain.Delivery) deliveryView {
 		LastStatusCode: d.LastStatusCode, DeliveredAt: d.DeliveredAt, CreatedAt: d.CreatedAt, Payload: d.Payload}
 }
 
+// RegisterAdmin mounts the staff view of one tenant's deliveries behind staff.
+func (h *Handler) RegisterAdmin(mux *http.ServeMux, staff func(http.Handler) http.Handler) {
+	mux.Handle("GET /admin/v1/webhook-deliveries", staff(http.HandlerFunc(h.adminList)))
+	mux.Handle("GET /admin/v1/stats/webhooks", staff(httpx.StatsHandler(h.svc.Stats)))
+}
+
+func (h *Handler) adminList(w http.ResponseWriter, r *http.Request) {
+	tenantID := httpx.TrimmedQuery(r, "tenant_id")
+	if tenantID == "" {
+		httpx.WriteError(w, r, errs.Invalid("tenant_id_required", "tenant_id is required"))
+		return
+	}
+	h.listFor(w, r, tenantID)
+}
+
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	h.listFor(w, r, auth.MustTenant(r.Context()))
+}
+
+func (h *Handler) listFor(w http.ResponseWriter, r *http.Request, tenantID string) {
 	limit := httpx.QueryLimit(r, 25, 100)
 	status := httpx.TrimmedQuery(r, "status")
 	switch domain.Status(status) {
@@ -53,7 +72,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ds, err := h.svc.List(r.Context(), app.ListFilter{
-		TenantID: auth.MustTenant(r.Context()), PaymentID: httpx.TrimmedQuery(r, "payment_id"),
+		TenantID: tenantID, PaymentID: httpx.TrimmedQuery(r, "payment_id"),
 		Status: status, Before: httpx.TrimmedQuery(r, "cursor"), Limit: limit + 1,
 	})
 	if err != nil {

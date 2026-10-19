@@ -100,7 +100,23 @@ const (
 	ActionTenantReinstate = "tenant.reinstate"
 	ActionUserDisable     = "user.disable"
 	ActionUserEnable      = "user.enable"
+	ActionUserChangeEmail = "user.change_email"
 )
+
+// Recovery is an account-recovery action support can take on a user.
+type Recovery string
+
+const (
+	RecoverSendPasswordReset  Recovery = "send_password_reset" // email a reset link; staff never set passwords
+	RecoverResendVerification Recovery = "resend_verification" //
+	RecoverRevokeSessions     Recovery = "revoke_sessions"     // sign out everywhere, forget trusted devices
+	RecoverResetTwoStep       Recovery = "reset_two_step"      // codes back on, trusted devices forgotten
+	RecoverUnlinkGoogle       Recovery = "unlink_google"       //
+	RecoverClearRateLimits    Recovery = "clear_rate_limits"   // unlock after too many attempts
+)
+
+// Action is the audit-log action name for a recovery.
+func (r Recovery) Action() string { return "user." + string(r) }
 
 // ValidateReason requires a short explanation for every action that changes
 // a customer's account. It is shown in the audit log and, for suspensions,

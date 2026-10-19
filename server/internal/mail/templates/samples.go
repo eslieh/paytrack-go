@@ -38,6 +38,8 @@ func Samples(appURL string) map[string]map[string]any {
 		"tenant_reinstated": {"BusinessName": "Acme Shop", "DashboardURL": appURL + "/dashboard"},
 		"account_disabled":  {"Reason": "Suspected account takeover"},
 		"account_enabled":   {"SignInURL": appURL + "/auth"},
+		"account_notice": {"Title": "Two-step sign-in was reset", "When": "16 Oct 2026, 09:41 EAT", "SupportURL": appURL + "/dashboard/support",
+			"Message": "Paytrack support turned email sign-in codes back on and forgot your trusted devices. Your next sign-in will need a code."},
 		"ticket_received": {"Ref": "#1042", "Subject": "Payment stuck in pending", "BusinessName": "Acme Shop",
 			"Excerpt": "A customer paid KES 1,500 but the payment still shows pending.", "TicketURL": appURL + "/dashboard/support/tkt_sample"},
 		"ticket_reply": {"Ref": "#1042", "Subject": "Payment stuck in pending", "BusinessName": "Acme Shop",

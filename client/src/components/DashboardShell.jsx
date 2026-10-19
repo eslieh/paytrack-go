@@ -11,6 +11,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import styles from "../app/dashboard/styles.module.css";
 import { Busy } from "@/components/Busy.jsx";
 import { startTopLoader } from "@/components/TopLoader.jsx";
+import NotificationBell, { useUnread } from "@/components/NotificationBell.jsx";
 
 const NAV = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
@@ -56,6 +57,7 @@ export default function DashboardShell({ children }) {
   const { token, loading, logout, user, tenant } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const [unread, refreshUnread] = useUnread(!!token);
 
   useEffect(() => {
     if (!loading && !token) router.replace(`/auth?next=${encodeURIComponent(pathname)}`);
@@ -72,6 +74,7 @@ export default function DashboardShell({ children }) {
         activeHref={active}
         account={user ? { name: tenant?.name, email: user.email } : null}
         onSignOut={async () => { startTopLoader(); await logout(); router.replace("/auth"); }}
+        actions={token ? <NotificationBell unread={unread} onChanged={refreshUnread} /> : null}
       />
       <main className={styles.main}>
         {loading || !token ? <PageSkeleton /> : (

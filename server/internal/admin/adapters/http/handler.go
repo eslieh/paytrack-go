@@ -51,6 +51,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /admin/v1/tenants/{id}/reinstate", staff(h.action(h.svc.ReinstateTenant)))
 	mux.Handle("POST /admin/v1/users/{id}/disable", staff(h.action(h.svc.DisableUser)))
 	mux.Handle("POST /admin/v1/users/{id}/enable", staff(h.action(h.svc.EnableUser)))
+	mux.Handle("POST /admin/v1/users/{id}/recover", staff(h.recover))
+	mux.Handle("POST /admin/v1/users/{id}/change-email", staff(h.changeEmail))
 }
 
 // Staff wraps another module's admin route (e.g. the support queue) with
@@ -251,4 +253,34 @@ func (h *Handler) action(fn func(context.Context, auth.Principal, string, string
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+func (h *Handler) recover(w http.ResponseWriter, r *http.Request) {
+	req, ok := decode[struct {
+		Action string `json:"action"`
+		Reason string `json:"reason"`
+	}](w, r)
+	if !ok {
+		return
+	}
+	if err := h.svc.Recover(r.Context(), principal(r), r.PathValue("id"), domain.Recovery(req.Action), req.Reason, h.client(r)); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) changeEmail(w http.ResponseWriter, r *http.Request) {
+	req, ok := decode[struct {
+		Email  string `json:"email"`
+		Reason string `json:"reason"`
+	}](w, r)
+	if !ok {
+		return
+	}
+	if err := h.svc.ChangeEmail(r.Context(), principal(r), r.PathValue("id"), req.Email, req.Reason, h.client(r)); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -280,6 +280,22 @@ export const ENDPOINT_GROUPS = [
         ],
       },
       {
+        id: "check-payment-status",
+        title: "Check a payment's status with M-Pesa",
+        method: "POST",
+        path: "/v1/payments/{id}/check-status",
+        auth: "key",
+        description:
+          "Asks M-Pesa for the result right now instead of waiting for the callback. PayTrack already does this automatically when a callback is late (45s, 1m, 2m, 5m, 10m, 20m), so you rarely need it. A result is applied exactly like a callback: the payment updates and your webhook is sent. Works for `pending` payments, and for `expired` ones (which can still become `succeeded`). Limited to 6 checks per payment per minute. `outcome` is `updated`, `still_processing`, `unchanged`, `final` or `not_queryable`. Payments confirmed this way have no `mpesa_receipt_number`, because M-Pesa's status query doesn't return one.",
+        pathParams: [["id", "string", true, "The payment ID."]],
+        request: { path: { id: EX.paymentSucceeded.id } },
+        responses: [
+          { status: "200 OK", body: { payment: EX.paymentSucceeded, outcome: "updated", message: "M-Pesa returned a result; the payment was updated and your webhook is on its way." } },
+          { status: "429 Too Many Requests", body: err("rate_limited", "this payment was checked recently; try again in a minute") },
+          { status: "503 Service Unavailable", body: err("mpesa_unavailable", "M-Pesa didn't answer the status check; try again shortly") },
+        ],
+      },
+      {
         id: "list-payments",
         title: "List payments",
         method: "GET",

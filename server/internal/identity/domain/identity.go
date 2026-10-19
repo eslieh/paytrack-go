@@ -217,6 +217,7 @@ const (
 	EventGoogleUnlinked  = "google_unlinked"
 	EventAccountDisabled = "account_disabled" // by a platform admin
 	EventAccountEnabled  = "account_enabled"  //
+	EventEmailChanged    = "email_changed"    // by support
 )
 
 // MaskEmail renders j•••@gmail.com for "we sent a code to" messages.

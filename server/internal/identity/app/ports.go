@@ -17,10 +17,12 @@ var (
 )
 
 type Repository interface {
+	UserStats(ctx context.Context, since time.Time) (*Stats, error)
 	CreateUser(ctx context.Context, u *domain.User) error
 	GetUser(ctx context.Context, id string) (*domain.User, error)
 	GetUserByEmail(ctx context.Context, email string) (*domain.User, error)
 	GetOwner(ctx context.Context, tenantID string) (*domain.User, error)
+	ListUsers(ctx context.Context, f UserFilter) ([]*domain.User, error)
 	SaveUser(ctx context.Context, u *domain.User) error
 
 	CreateSession(ctx context.Context, s *domain.Session) error
@@ -54,6 +56,13 @@ type Repository interface {
 	ListEvents(ctx context.Context, userID string, limit int) ([]*domain.SecurityEvent, error)
 }
 
+// UserFilter narrows the admin user search; zero fields match everything.
+type UserFilter struct {
+	TenantID   string
+	EmailQuery string // substring, case-insensitive
+	Limit      int
+}
+
 type PasswordHasher interface {
 	Hash(password string) (string, error)
 	Compare(hash, password string) bool
@@ -71,6 +80,7 @@ type Mailer interface {
 
 type RateLimiter interface {
 	Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error)
+	Reset(ctx context.Context, keys ...string) error
 }
 
 // Tenants is the tenant module, seen from identity.

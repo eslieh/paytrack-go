@@ -173,6 +173,8 @@ function PaymentDetail({ id, channelName, onClose, onUpdate }) {
   const [deliveries, setDeliveries] = useState(null);
   const [error, setError] = useState(null);
   const [redelivering, setRedelivering] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const [checkNote, setCheckNote] = useState("");
 
   const loadDeliveries = useCallback(() => {
     api.webhook.deliveries({ payment_id: id, limit: 20 }).then((r) => setDeliveries(r.data)).catch(() => setDeliveries([]));
@@ -198,6 +200,26 @@ function PaymentDetail({ id, channelName, onClose, onUpdate }) {
     return () => { mounted = false; clearTimeout(timer); };
   }, [id, onUpdate, loadDeliveries]);
 
+  // Ask M-Pesa now instead of waiting for the callback or the automatic checks.
+  async function checkStatus() {
+    setChecking(true);
+    setCheckNote("");
+    setError(null);
+    try {
+      const res = await api.payments.checkStatus(id);
+      setP(res.payment);
+      onUpdate(res.payment);
+      setCheckNote(res.message);
+      if (res.outcome === "updated") loadDeliveries();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  const canCheck = p && ["pending", "expired"].includes(p.status) && p.checkout_request_id;
+
   async function redeliver(d) {
     setRedelivering(d.id);
     try {
@@ -216,6 +238,11 @@ function PaymentDetail({ id, channelName, onClose, onUpdate }) {
       onClose={onClose}
       footer={
         <>
+          {canCheck && (
+            <button className="btn btn-ghost" onClick={checkStatus} disabled={checking} title="Ask M-Pesa for this payment's result now">
+              {checking ? "Checking with M-Pesa…" : "Check status with M-Pesa"}
+            </button>
+          )}
           {p?.status === "succeeded" && (
             <Link className="btn btn-ghost" href={`/receipt?id=${encodeURIComponent(p.id)}`} target="_blank">Receipt</Link>
           )}
@@ -230,6 +257,7 @@ function PaymentDetail({ id, channelName, onClose, onUpdate }) {
             <StatusBadge status={p.status} />
             {OPEN.has(p.status) && <span className={styles.cellSub}>Waiting for the customer to respond…</span>}
           </div>
+          {checkNote && <div className={styles.notice} style={{ marginBottom: 8 }}>{checkNote}</div>}
           <KV label="Payment ID"><span className={styles.mono} style={{ letterSpacing: 0 }}>{p.id}</span></KV>
           <KV label="Phone">{p.phone}</KV>
           <KV label="Description">{p.description}</KV>

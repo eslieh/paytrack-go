@@ -160,7 +160,10 @@ func (f *fakeTenants) ReinstateTenant(_ context.Context, id string) error {
 	return nil
 }
 
-type fakeUsers struct{ disabled map[string]bool }
+type fakeUsers struct {
+	disabled map[string]bool
+	calls    []string
+}
 
 func (f *fakeUsers) OwnerContact(context.Context, string) (string, bool, error) {
 	return "owner@acme.test", true, nil
@@ -178,6 +181,28 @@ func (f *fakeUsers) DisableUser(_ context.Context, id, _ string, _ Client) error
 func (f *fakeUsers) EnableUser(_ context.Context, id string, _ Client) error {
 	delete(f.disabled, id)
 	return nil
+}
+func (f *fakeUsers) did(id, what string) error {
+	f.calls = append(f.calls, what+":"+id)
+	return nil
+}
+func (f *fakeUsers) SendPasswordReset(_ context.Context, id string) error { return f.did(id, "reset") }
+func (f *fakeUsers) ResendVerification(_ context.Context, id string) error {
+	return f.did(id, "verify")
+}
+func (f *fakeUsers) RevokeAllSessions(_ context.Context, id string, _ Client) error {
+	return f.did(id, "revoke")
+}
+func (f *fakeUsers) ResetTwoStep(_ context.Context, id string, _ Client) error {
+	return f.did(id, "two_step")
+}
+func (f *fakeUsers) UnlinkGoogle(_ context.Context, id string, _ Client) error {
+	return f.did(id, "unlink")
+}
+func (f *fakeUsers) ClearSignInLimits(_ context.Context, id string) error { return f.did(id, "limits") }
+func (f *fakeUsers) ChangeEmail(_ context.Context, id, email string, _ Client) (string, error) {
+	_ = f.did(id, "email:"+email)
+	return "user@acme.test", nil
 }
 
 type fixture struct {
@@ -372,5 +397,60 @@ func TestDisableUserEmailsUserAndAudits(t *testing.T) {
 	}
 	if last := f.repo.audit[len(f.repo.audit)-1]; last.Action != domain.ActionUserDisable || last.TargetID != "usr_1" {
 		t.Fatalf("audit entry: %+v", last)
+	}
+}
+
+func TestRecover(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	p, _ := f.svc.Authenticate(ctx, f.signIn(t))
+
+	if err := f.svc.Recover(ctx, p, "usr_1", "make_admin", "Because I said so", client); !errs.IsKind(err, errs.KindInvalid) {
+		t.Fatalf("unknown action: %v", err)
+	}
+	if err := f.svc.Recover(ctx, p, "usr_1", domain.RecoverResetTwoStep, "", client); !errs.IsKind(err, errs.KindInvalid) {
+		t.Fatalf("missing reason: %v", err)
+	}
+	if len(f.users.calls) != 0 {
+		t.Fatal("identity called before validation")
+	}
+
+	f.repo.out = nil
+	if err := f.svc.Recover(ctx, p, "usr_1", domain.RecoverResetTwoStep, "Lost phone, verified by call", client); err != nil {
+		t.Fatal(err)
+	}
+	n := f.repo.notification(t, "account_notice")
+	if n.Email.To != "user@acme.test" || n.UserID != "usr_1" || n.TenantID != "ten_1" || n.InApp == nil {
+		t.Fatalf("security notice: %+v", n)
+	}
+	if last := f.repo.audit[len(f.repo.audit)-1]; last.Action != "user.reset_two_step" || last.Reason != "Lost phone, verified by call" {
+		t.Fatalf("audit: %+v", last)
+	}
+
+	// The reset email itself is the notice; no extra one.
+	f.repo.out = nil
+	if err := f.svc.Recover(ctx, p, "usr_1", domain.RecoverSendPasswordReset, "Owner asked by phone", client); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.repo.out) != 0 {
+		t.Fatalf("password reset sent an extra notice: %+v", f.repo.out)
+	}
+
+	if err := f.svc.ChangeEmail(ctx, p, "usr_1", "new@acme.test", "Owner lost old mailbox", client); err != nil {
+		t.Fatal(err)
+	}
+	n = f.repo.notification(t, "account_notice")
+	if n.Email.To != "user@acme.test" || n.InApp != nil {
+		t.Fatalf("old address must be warned by email only: %+v", n)
+	}
+	last := f.repo.audit[len(f.repo.audit)-1]
+	if last.Action != domain.ActionUserChangeEmail || last.Data["from"] != "user@acme.test" || last.Data["to"] != "new@acme.test" {
+		t.Fatalf("audit: %+v", last)
+	}
+	want := []string{"two_step:usr_1", "reset:usr_1", "email:new@acme.test:usr_1"}
+	for i, w := range want {
+		if f.users.calls[i] != w {
+			t.Fatalf("identity calls: %v", f.users.calls)
+		}
 	}
 }

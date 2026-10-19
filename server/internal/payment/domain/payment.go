@@ -309,6 +309,13 @@ func (p *Payment) CanQueryStatus() bool {
 	return p.Status == StatusPending && p.CheckoutRequestID != ""
 }
 
+// CanCheckNow reports whether an on-demand status query can run: it needs
+// Daraja's CheckoutRequestID, and only pending or expired payments can still
+// change (an expired one only to succeeded).
+func (p *Payment) CanCheckNow() bool {
+	return (p.Status == StatusPending || p.Status == StatusExpired) && p.CheckoutRequestID != ""
+}
+
 // RecordUnresolvedCheck is called when a reconciliation pass could not
 // determine the outcome. It schedules the next check or expires the
 // payment, returning an event if it expired.

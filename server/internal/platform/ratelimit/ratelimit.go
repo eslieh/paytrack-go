@@ -32,3 +32,9 @@ func (l *Limiter) Prune(ctx context.Context) error {
 	_, err := l.pool.Exec(ctx, `DELETE FROM rate_limits WHERE window_start < now() - interval '1 day'`)
 	return err
 }
+
+// Reset clears every window of the given keys (support unlocking an account).
+func (l *Limiter) Reset(ctx context.Context, keys ...string) error {
+	_, err := l.pool.Exec(ctx, `DELETE FROM rate_limits WHERE key = ANY($1)`, keys)
+	return err
+}

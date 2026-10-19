@@ -20,12 +20,13 @@ type Service struct {
 	repo            Repository
 	channels        ChannelProvider
 	gateway         Gateway
+	limiter         RateLimiter
 	callbackBaseURL string
 	now             func() time.Time
 }
 
-func NewService(repo Repository, channels ChannelProvider, gateway Gateway, callbackBaseURL string) *Service {
-	return &Service{repo: repo, channels: channels, gateway: gateway, callbackBaseURL: callbackBaseURL, now: time.Now}
+func NewService(repo Repository, channels ChannelProvider, gateway Gateway, limiter RateLimiter, callbackBaseURL string) *Service {
+	return &Service{repo: repo, channels: channels, gateway: gateway, limiter: limiter, callbackBaseURL: callbackBaseURL, now: time.Now}
 }
 
 type InitiateCmd struct {
@@ -218,6 +219,59 @@ func (s *Service) ApplyCallback(ctx context.Context, cb contracts.STKCallback) e
 		return events(p.ApplyResult(res, s.now()))
 	})
 	return err
+}
+
+// CheckOutcome describes what an on-demand status check found.
+type CheckOutcome string
+
+const (
+	CheckUpdated         CheckOutcome = "updated"          // Daraja had a result; the payment changed (webhook sent)
+	CheckStillProcessing CheckOutcome = "still_processing" // the customer hasn't finished; try again shortly
+	CheckUnchanged       CheckOutcome = "unchanged"        // Daraja's answer doesn't change the payment
+	CheckFinal           CheckOutcome = "final"            // already succeeded, failed or cancelled
+	CheckNotQueryable    CheckOutcome = "not_queryable"    // no CheckoutRequestID (the push never reached Daraja)
+)
+
+// CheckStatus asks Daraja for a payment's result right now, instead of
+// waiting for the callback or the reconciler. A result is applied exactly
+// like a callback, so the merchant's webhook and receipt go out as usual.
+func (s *Service) CheckStatus(ctx context.Context, tenantID, id string) (*domain.Payment, CheckOutcome, error) {
+	p, err := s.Get(ctx, tenantID, id)
+	if err != nil {
+		return nil, "", err
+	}
+	if p.Status.Final() {
+		return p, CheckFinal, nil
+	}
+	if !p.CanCheckNow() {
+		return p, CheckNotQueryable, nil
+	}
+	if s.limiter != nil {
+		if ok, err := s.limiter.Allow(ctx, "payment-check:"+p.ID, 6, time.Minute); err == nil && !ok {
+			return nil, "", errs.RateLimited("this payment was checked recently; try again in a minute")
+		}
+	}
+	qctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	q, err := s.gateway.STKQuery(qctx, p.CheckoutRequestID)
+	cancel()
+	if err != nil {
+		slog.WarnContext(ctx, "on-demand stk query failed", "payment_id", p.ID, "err", err)
+		return nil, "", errs.Unavailable("mpesa_unavailable", "M-Pesa didn't answer the status check; try again shortly")
+	}
+	if q.Pending {
+		return p, CheckStillProcessing, nil
+	}
+	before := p.Status
+	p, err = s.update(ctx, p, func(p *domain.Payment) []domain.Event {
+		return events(p.ApplyResult(q.Result, s.now()))
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	if p.Status != before {
+		return p, CheckUpdated, nil
+	}
+	return p, CheckUnchanged, nil
 }
 
 // Reconcile queries Daraja for payments whose callback is overdue. Safe to

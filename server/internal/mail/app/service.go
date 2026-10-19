@@ -17,6 +17,7 @@ import (
 )
 
 type Repository interface {
+	MailStats(ctx context.Context, since time.Time) (*Stats, error)
 	Create(ctx context.Context, m *domain.Message) error // ignores duplicate dedupe keys
 	Save(ctx context.Context, m *domain.Message) error
 	ClaimDue(ctx context.Context, now time.Time, limit int, lease time.Duration) ([]*domain.Message, error)

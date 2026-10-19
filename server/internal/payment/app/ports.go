@@ -20,6 +20,7 @@ var (
 // outbox in the same transaction as the state change, and fail with
 // ErrVersionConflict if p.Version no longer matches.
 type Repository interface {
+	PaymentStats(ctx context.Context, since time.Time) (*Stats, error)
 	Create(ctx context.Context, p *domain.Payment) error
 	Get(ctx context.Context, tenantID, id string) (*domain.Payment, error)
 	GetByIdempotencyKey(ctx context.Context, tenantID, key string) (*domain.Payment, error)
@@ -45,6 +46,10 @@ type ListFilter struct {
 // ChannelProvider resolves a tenant's channel to a routing destination.
 type ChannelProvider interface {
 	Resolve(ctx context.Context, tenantID, channelID string) (domain.Destination, error)
+}
+
+type RateLimiter interface {
+	Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error)
 }
 
 // STKPushRequest is signed by the gateway with the platform's Daraja app;

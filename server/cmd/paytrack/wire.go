@@ -29,6 +29,7 @@ import (
 	inboxkafka "github.com/eslieh/paytrack-go/server/internal/inbox/adapters/kafka"
 	inboxpg "github.com/eslieh/paytrack-go/server/internal/inbox/adapters/postgres"
 	inboxapp "github.com/eslieh/paytrack-go/server/internal/inbox/app"
+	mailhttp "github.com/eslieh/paytrack-go/server/internal/mail/adapters/http"
 	"github.com/eslieh/paytrack-go/server/internal/mail/adapters/logsender"
 	mailpg "github.com/eslieh/paytrack-go/server/internal/mail/adapters/postgres"
 	"github.com/eslieh/paytrack-go/server/internal/mail/adapters/resend"
@@ -132,7 +133,7 @@ func build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*module
 		daraja.New(daraja.Credentials{
 			BaseURL: cfg.Mpesa.BaseURL, ConsumerKey: cfg.Mpesa.ConsumerKey, ConsumerSecret: cfg.Mpesa.ConsumerSecret,
 			ShortCode: cfg.Mpesa.ShortCode, Passkey: cfg.Mpesa.Passkey,
-		}), cfg.PublicCallbackBaseURL)
+		}), m.limiter, cfg.PublicCallbackBaseURL)
 	m.tenants.Wire(m.identity, m.payments, m.mail, previewer{m.mail}, cfg.AppBaseURL)
 	m.notify = notifyapp.NewService(notifypg.New(pool), notifytenant.Targets{Tenants: m.tenants}, webhook.New(cfg.WebhookAllowPrivate),
 		notifytenant.Prefs{Tenants: m.tenants}, m.mail, cfg.AppBaseURL)
@@ -224,20 +225,32 @@ func apiHandler(cfg *config.Config, m *modules, pool *pgxpool.Pool) http.Handler
 		return false
 	})
 	authed := func(h http.Handler) http.Handler { return authenticate(readOnly(h)) }
-	identityhttp.New(m.identity, m.tenants, identityhttp.Config{
-		CookieSecure: cfg.CookieSecure, TrustXFF: cfg.APITrustXFF, AllowedOrigins: cfg.CORSAllowedOrigins,
-		AppBaseURL: cfg.AppBaseURL, APIPublicPath: cfg.APIPublicPath,
-	}).Register(mux, authed)
-	samples := func(tpl string) map[string]any { return templates.Samples(cfg.AppBaseURL)[tpl] }
-	tenanthttp.New(m.tenants, samples).Register(mux, authed)
-	paymenthttp.New(m.payments).Register(mux, authed)
-	notifyhttp.New(m.notify).Register(mux, authed)
+	// Staff routes: the admin module owns the session check; each module
+	// serves its own staff-only reads behind it.
 	admin := adminhttp.New(m.admin, adminhttp.Config{
 		CookieSecure: cfg.CookieSecure, TrustXFF: cfg.APITrustXFF, APIPublicPath: cfg.APIPublicPath,
 		AllowedCIDRs: cfg.AdminAllowedCIDRs,
 	})
 	admin.Register(mux)
+
+	identity := identityhttp.New(m.identity, m.tenants, identityhttp.Config{
+		CookieSecure: cfg.CookieSecure, TrustXFF: cfg.APITrustXFF, AllowedOrigins: cfg.CORSAllowedOrigins,
+		AppBaseURL: cfg.AppBaseURL, APIPublicPath: cfg.APIPublicPath,
+	})
+	identity.Register(mux, authed)
+	identity.RegisterAdmin(mux, admin.Staff)
+	samples := func(tpl string) map[string]any { return templates.Samples(cfg.AppBaseURL)[tpl] }
+	tenants := tenanthttp.New(m.tenants, samples)
+	tenants.Register(mux, authed)
+	tenants.RegisterAdmin(mux, admin.Staff)
+	payments := paymenthttp.New(m.payments)
+	payments.Register(mux, authed)
+	payments.RegisterAdmin(mux, admin.Staff)
+	deliveries := notifyhttp.New(m.notify)
+	deliveries.Register(mux, authed)
+	deliveries.RegisterAdmin(mux, admin.Staff)
 	supporthttp.New(m.support).Register(mux, authed, admin.Staff)
+	mailhttp.RegisterAdmin(mux, admin.Staff, m.mail)
 	inboxhttp.New(m.inbox).Register(mux, authed)
 	return httpx.Chain(mux, httpx.Common, httpx.CORS(cfg.CORSAllowedOrigins))
 }

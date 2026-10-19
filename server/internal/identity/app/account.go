@@ -120,6 +120,11 @@ func (s *Service) ForgotPassword(ctx context.Context, email string, c Client) er
 	if err != nil || u.Disabled() {
 		return nil
 	}
+	return s.sendReset(ctx, u)
+}
+
+// sendReset emails a fresh reset link, invalidating earlier ones.
+func (s *Service) sendReset(ctx context.Context, u *domain.User) error {
 	now := s.now()
 	if err := s.repo.InvalidateTokens(ctx, u.ID, domain.PurposeResetPassword, now); err != nil {
 		return err

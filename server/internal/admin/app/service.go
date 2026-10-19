@@ -260,10 +260,10 @@ func (s *Service) audit(ctx context.Context, p auth.Principal, action, targetTyp
 // notifications in the same transaction. The action itself already
 // happened in another module, so a failure here is reported loudly.
 func (s *Service) record(ctx context.Context, p auth.Principal, c Client, action, targetType, targetID, reason string,
-	out ...contracts.Notification) error {
+	data map[string]string, out ...contracts.Notification) error {
 	if err := s.repo.AddAudit(ctx, &domain.AuditEntry{
 		StaffID: p.StaffID, Action: action, TargetType: targetType, TargetID: targetID, Reason: reason,
-		IP: c.IP, CreatedAt: s.now(),
+		Data: data, IP: c.IP, CreatedAt: s.now(),
 	}, out); err != nil {
 		slog.ErrorContext(ctx, "AUDIT WRITE FAILED", "action", action, "target", targetID, "staff", p.StaffID, "err", err)
 		return fmt.Errorf("%s was applied but recording it failed: %w", action, err)
@@ -300,7 +300,7 @@ func (s *Service) SuspendTenant(ctx context.Context, p auth.Principal, tenantID,
 	if err := s.tenants.SuspendTenant(ctx, tenantID, reason); err != nil {
 		return err
 	}
-	return s.record(ctx, p, c, domain.ActionTenantSuspend, domain.TargetTenant, tenantID, reason,
+	return s.record(ctx, p, c, domain.ActionTenantSuspend, domain.TargetTenant, tenantID, reason, nil,
 		notice(tenantID, "", email, "tenant_suspended", map[string]any{
 			"BusinessName": name, "Reason": reason, "DashboardURL": s.cfg.AppBaseURL + "/dashboard/support",
 		}, &contracts.InApp{Kind: "account.suspended", Title: "Your account has been suspended", Body: reason, Link: "/dashboard/support"}))
@@ -318,7 +318,7 @@ func (s *Service) ReinstateTenant(ctx context.Context, p auth.Principal, tenantI
 	if err := s.tenants.ReinstateTenant(ctx, tenantID); err != nil {
 		return err
 	}
-	return s.record(ctx, p, c, domain.ActionTenantReinstate, domain.TargetTenant, tenantID, reason,
+	return s.record(ctx, p, c, domain.ActionTenantReinstate, domain.TargetTenant, tenantID, reason, nil,
 		notice(tenantID, "", email, "tenant_reinstated", map[string]any{
 			"BusinessName": name, "DashboardURL": s.cfg.AppBaseURL + "/dashboard",
 		}, &contracts.InApp{Kind: "account.reinstated", Title: "Your account is active again",
@@ -339,7 +339,7 @@ func (s *Service) DisableUser(ctx context.Context, p auth.Principal, userID, rea
 	if err := s.users.DisableUser(ctx, userID, reason, c); err != nil {
 		return err
 	}
-	return s.record(ctx, p, c, domain.ActionUserDisable, domain.TargetUser, userID, reason,
+	return s.record(ctx, p, c, domain.ActionUserDisable, domain.TargetUser, userID, reason, nil,
 		notice(tenantID, userID, email, "account_disabled", map[string]any{"Reason": reason}, nil))
 }
 
@@ -355,8 +355,79 @@ func (s *Service) EnableUser(ctx context.Context, p auth.Principal, userID, reas
 	if err := s.users.EnableUser(ctx, userID, c); err != nil {
 		return err
 	}
-	return s.record(ctx, p, c, domain.ActionUserEnable, domain.TargetUser, userID, reason,
+	return s.record(ctx, p, c, domain.ActionUserEnable, domain.TargetUser, userID, reason, nil,
 		notice(tenantID, userID, email, "account_enabled", map[string]any{"SignInURL": s.cfg.AppBaseURL + "/auth"}, nil))
+}
+
+// securityNotice tells a user what support changed on their account, by
+// email and in the dashboard.
+func (s *Service) securityNotice(tenantID, userID, to, title, message string) contracts.Notification {
+	return notice(tenantID, userID, to, "account_notice", map[string]any{
+		"Title": title, "Message": message, "When": s.when(), "SupportURL": s.cfg.AppBaseURL + "/dashboard/support",
+	}, &contracts.InApp{Kind: "account.security", Title: title, Body: message, Link: "/dashboard/settings"})
+}
+
+// Recover runs one account-recovery action on a user. Actions that change
+// how the user signs in also send them a security notice.
+func (s *Service) Recover(ctx context.Context, p auth.Principal, userID string, r domain.Recovery, reason string, c Client) error {
+	reason, err := domain.ValidateReason(reason)
+	if err != nil {
+		return err
+	}
+	email, tenantID, err := s.users.UserContact(ctx, userID)
+	if err != nil {
+		return err
+	}
+	var out []contracts.Notification
+	note := func(title, message string) {
+		out = append(out, s.securityNotice(tenantID, userID, email, title, message))
+	}
+	switch r {
+	case domain.RecoverSendPasswordReset: // the reset email itself is the notice
+		err = s.users.SendPasswordReset(ctx, userID)
+	case domain.RecoverResendVerification:
+		err = s.users.ResendVerification(ctx, userID)
+	case domain.RecoverRevokeSessions:
+		err = s.users.RevokeAllSessions(ctx, userID, c)
+		note("You've been signed out everywhere", "Paytrack support signed your account out on every device and forgot trusted devices. Sign in again to continue.")
+	case domain.RecoverResetTwoStep:
+		err = s.users.ResetTwoStep(ctx, userID, c)
+		note("Two-step sign-in was reset", "Paytrack support turned email sign-in codes back on and forgot your trusted devices. Your next sign-in will need a code.")
+	case domain.RecoverUnlinkGoogle:
+		err = s.users.UnlinkGoogle(ctx, userID, c)
+		note("Google sign-in was unlinked", "Paytrack support unlinked Google from your account. Sign in with your email and password.")
+	case domain.RecoverClearRateLimits:
+		err = s.users.ClearSignInLimits(ctx, userID)
+	default:
+		return errs.Invalid("invalid_action", "unknown recovery action")
+	}
+	if err != nil {
+		return err
+	}
+	return s.record(ctx, p, c, r.Action(), domain.TargetUser, userID, reason, nil, out...)
+}
+
+// ChangeEmail moves a user to a new address. The new address gets a
+// verification link (from identity); the old one is warned.
+func (s *Service) ChangeEmail(ctx context.Context, p auth.Principal, userID, email, reason string, c Client) error {
+	reason, err := domain.ValidateReason(reason)
+	if err != nil {
+		return err
+	}
+	_, tenantID, err := s.users.UserContact(ctx, userID)
+	if err != nil {
+		return err
+	}
+	old, err := s.users.ChangeEmail(ctx, userID, email, c)
+	if err != nil {
+		return err
+	}
+	n := s.securityNotice(tenantID, userID, old, "Your sign-in email was changed",
+		"At your request, Paytrack support changed this account's sign-in email to "+maskEmail(email)+
+			". This address will no longer receive account emails. If you didn't ask for this, contact us right away.")
+	n.InApp = nil // the user is signed out; the new address gets a verification link instead
+	return s.record(ctx, p, c, domain.ActionUserChangeEmail, domain.TargetUser, userID, reason,
+		map[string]string{"from": old, "to": email}, n)
 }
 
 // ---------------------------------------------------------------- helpers

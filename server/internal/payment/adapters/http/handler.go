@@ -19,6 +19,7 @@ func (h *Handler) Register(mux *http.ServeMux, authed func(http.Handler) http.Ha
 	mux.Handle("POST /v1/payments", authed(auth.RequireVerified(http.HandlerFunc(h.create))))
 	mux.Handle("GET /v1/payments", authed(http.HandlerFunc(h.list)))
 	mux.Handle("GET /v1/payments/{id}", authed(http.HandlerFunc(h.get)))
+	mux.Handle("POST /v1/payments/{id}/check-status", authed(http.HandlerFunc(h.checkStatus)))
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -86,4 +87,21 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		out.Data = append(out.Data, app.View(p))
 	}
 	httpx.JSON(w, http.StatusOK, out)
+}
+
+var checkMessages = map[app.CheckOutcome]string{
+	app.CheckUpdated:         "M-Pesa returned a result; the payment was updated and your webhook is on its way.",
+	app.CheckStillProcessing: "M-Pesa is still waiting for the customer. We'll keep checking automatically.",
+	app.CheckUnchanged:       "M-Pesa's answer doesn't change this payment.",
+	app.CheckFinal:           "This payment is already final.",
+	app.CheckNotQueryable:    "This push never reached M-Pesa, so there's nothing to look up. It expires 3 minutes after creation unless a callback arrives.",
+}
+
+func (h *Handler) checkStatus(w http.ResponseWriter, r *http.Request) {
+	p, outcome, err := h.svc.CheckStatus(r.Context(), auth.MustTenant(r.Context()), r.PathValue("id"))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"payment": app.View(p), "outcome": outcome, "message": checkMessages[outcome]})
 }

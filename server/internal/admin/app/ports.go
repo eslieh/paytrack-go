@@ -69,4 +69,13 @@ type Users interface {
 	UserContact(ctx context.Context, id string) (email, tenantID string, err error)
 	DisableUser(ctx context.Context, id, reason string, c Client) error
 	EnableUser(ctx context.Context, id string, c Client) error
+
+	SendPasswordReset(ctx context.Context, id string) error
+	ResendVerification(ctx context.Context, id string) error
+	RevokeAllSessions(ctx context.Context, id string, c Client) error
+	ResetTwoStep(ctx context.Context, id string, c Client) error
+	UnlinkGoogle(ctx context.Context, id string, c Client) error
+	ClearSignInLimits(ctx context.Context, id string) error
+	// ChangeEmail returns the previous address so it can be warned.
+	ChangeEmail(ctx context.Context, id, email string, c Client) (oldEmail string, err error)
 }

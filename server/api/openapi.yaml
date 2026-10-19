@@ -19,7 +19,7 @@ info:
     Endpoints marked *user session only* reject API keys with 403. Endpoints marked
     *verified* reject dashboard sessions whose email is not verified (`email_not_verified`).
     A suspended account's API keys are rejected with 403 `tenant_suspended`. Its dashboard
-    sessions stay read-only: writes other than `/v1/auth/*`, `/v1/me/*` and `/v1/support/*` return 403
+    sessions stay read-only: writes other than `/v1/auth/*`, `/v1/me/*`, `/v1/support/*` and `/v1/notifications/*` return 403
     `tenant_suspended`. Disabled users get 403 `account_disabled` when signing in.
     Sign-in, code, reset and sign-up endpoints are rate limited (429 `rate_limited`).
 
@@ -615,6 +615,54 @@ paths:
       responses:
         "204": { description: Received }
 
+  /v1/notifications:
+    get:
+      tags: [notifications]
+      summary: Dashboard notifications, newest first (user session only)
+      parameters:
+        - { name: before, in: query, description: created_at of the last item from the previous page (RFC 3339), schema: { type: string, format: date-time } }
+        - { $ref: "#/components/parameters/limit" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  has_more: { type: boolean }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        kind: { type: string, example: support.reply }
+                        title: { type: string }
+                        body: { type: string }
+                        link: { type: string, description: Dashboard path }
+                        read_at: { type: string, format: date-time, nullable: true }
+                        created_at: { type: string, format: date-time }
+  /v1/notifications/unread-count:
+    get:
+      tags: [notifications]
+      summary: Number of unread notifications
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { unread: { type: integer } } } } } }
+  /v1/notifications/{id}/read:
+    post:
+      tags: [notifications]
+      summary: Mark one notification read
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "204": { description: Marked }
+  /v1/notifications/read-all:
+    post:
+      tags: [notifications]
+      summary: Mark every notification read
+      responses:
+        "204": { description: Marked }
+
   /v1/payments:
     post:
       tags: [payments]
@@ -677,6 +725,32 @@ paths:
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Payment" } } } }
         "404": { $ref: "#/components/responses/Error" }
+
+  /v1/payments/{id}/check-status:
+    post:
+      tags: [payments]
+      summary: Ask M-Pesa for a payment's result now
+      description: |
+        Runs an STK status query immediately instead of waiting for the callback (PayTrack also
+        does this automatically when a callback is late). A result is applied exactly like a
+        callback: the payment updates and the webhook is sent. Works for `pending` and `expired`
+        payments (an expired payment can still become `succeeded`). 6 checks per payment per
+        minute. Payments confirmed by a status query have no `mpesa_receipt_number`.
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200":
+          description: Checked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment: { $ref: "#/components/schemas/Payment" }
+                  outcome: { type: string, enum: [updated, still_processing, unchanged, final, not_queryable] }
+                  message: { type: string }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
 
 webhooks:
   paymentEvent:

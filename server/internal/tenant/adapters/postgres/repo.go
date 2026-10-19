@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -124,6 +125,28 @@ func (r *Repo) GetTenant(ctx context.Context, id string) (*domain.Tenant, error)
 		return nil, err
 	}
 	return &t, nil
+}
+
+// likeEscaper makes LIKE wildcards in a search literal.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+
+func (r *Repo) ListTenants(ctx context.Context, f app.TenantFilter) ([]*domain.Tenant, error) {
+	rows, err := r.pool.Query(ctx, `SELECT id, name, status, suspended_at, suspended_reason, created_at FROM tenant.tenants
+		WHERE ($1 = '' OR name ILIKE '%' || $5 || '%' OR id = $1) AND ($2 = '' OR status = $2) AND ($3 = '' OR id < $3)
+		ORDER BY id DESC LIMIT $4`, f.Query, f.Status, f.Before, f.Limit, likeEscaper.Replace(f.Query))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*domain.Tenant
+	for rows.Next() {
+		var t domain.Tenant
+		if err := rows.Scan(&t.ID, &t.Name, &t.Status, &t.SuspendedAt, &t.SuspendedReason, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &t)
+	}
+	return out, rows.Err()
 }
 
 func (r *Repo) GetTenantStatus(ctx context.Context, id string) (domain.Status, error) {

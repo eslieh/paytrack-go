@@ -84,6 +84,20 @@ func (s *Service) ReinstateTenant(ctx context.Context, id string) error {
 	return s.repo.SaveTenantStatus(ctx, t)
 }
 
+// ListTenants is the admin tenant search.
+func (s *Service) ListTenants(ctx context.Context, f TenantFilter) ([]*domain.Tenant, error) {
+	f.Query = strings.TrimSpace(f.Query)
+	if f.Status != "" && f.Status != domain.StatusActive && f.Status != domain.StatusSuspended {
+		return nil, errs.Invalid("invalid_status", "unknown status filter")
+	}
+	return s.repo.ListTenants(ctx, f)
+}
+
+// Tenant is the admin view of one tenant.
+func (s *Service) Tenant(ctx context.Context, id string) (*domain.Tenant, error) {
+	return s.tenant(ctx, id)
+}
+
 func (s *Service) tenant(ctx context.Context, id string) (*domain.Tenant, error) {
 	t, err := s.repo.GetTenant(ctx, id)
 	if errors.Is(err, ErrNotFound) {
